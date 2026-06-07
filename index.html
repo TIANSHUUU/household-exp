@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>家庭账单</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -19,179 +20,125 @@
       --red: #ff3b30;
       --shadow: 0 1px 8px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
     }
-
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #000000;
-        --card: #1c1c1e;
-        --text: #ffffff;
-        --sub: #8e8e93;
-        --border: #2c2c2e;
+        --bg: #000000; --card: #1c1c1e; --text: #ffffff;
+        --sub: #8e8e93; --border: #2c2c2e;
         --shadow: 0 1px 8px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
       }
     }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
 
     /* ── Lock Screen ── */
     #lock-screen {
-      position: fixed;
-      inset: 0;
-      background: var(--bg);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
+      position: fixed; inset: 0; background: var(--bg);
+      z-index: 9999; display: flex; align-items: center;
+      justify-content: center; padding: 24px;
     }
     #lock-screen.hidden { display: none; }
-
     .lock-card {
-      background: var(--card);
-      border-radius: 22px;
-      padding: 36px 28px 28px;
-      width: 100%;
-      max-width: 340px;
-      box-shadow: var(--shadow);
-      text-align: center;
+      background: var(--card); border-radius: 22px;
+      padding: 36px 28px 28px; width: 100%; max-width: 340px;
+      box-shadow: var(--shadow); text-align: center;
     }
-    .lock-icon {
-      font-size: 48px;
-      margin-bottom: 14px;
-    }
-    .lock-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .lock-sub {
-      font-size: 14px;
-      color: var(--sub);
-      margin-bottom: 26px;
-    }
+    .lock-icon { font-size: 48px; margin-bottom: 14px; }
+    .lock-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .lock-sub { font-size: 14px; color: var(--sub); margin-bottom: 26px; }
     .lock-input {
-      width: 100%;
-      padding: 14px 16px;
-      border: 1.5px solid var(--border);
-      border-radius: 12px;
-      font-size: 18px;
-      font-family: inherit;
-      background: var(--bg);
-      color: var(--text);
-      text-align: center;
-      letter-spacing: 3px;
-      outline: none;
-      transition: border-color 0.2s;
-      margin-bottom: 12px;
+      width: 100%; padding: 14px 16px;
+      border: 1.5px solid var(--border); border-radius: 12px;
+      font-size: 18px; font-family: inherit;
+      background: var(--bg); color: var(--text);
+      text-align: center; letter-spacing: 3px; outline: none;
+      transition: border-color 0.2s; margin-bottom: 12px;
     }
     .lock-input:focus { border-color: var(--accent); }
     .lock-input.error { border-color: var(--red); animation: shake 0.35s ease; }
     @keyframes shake {
-      0%,100% { transform: translateX(0); }
-      20%      { transform: translateX(-8px); }
-      40%      { transform: translateX(8px); }
-      60%      { transform: translateX(-5px); }
-      80%      { transform: translateX(5px); }
+      0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)}
+      40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}
     }
-    .lock-error {
-      font-size: 13px;
-      color: var(--red);
-      margin-bottom: 10px;
-      min-height: 18px;
-    }
+    .lock-error { font-size: 13px; color: var(--red); margin-bottom: 10px; min-height: 18px; }
     .lock-btn {
-      width: 100%;
-      padding: 14px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: opacity 0.15s;
+      width: 100%; padding: 14px; background: var(--accent); color: #fff;
+      border: none; border-radius: 12px; font-size: 16px; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: opacity 0.15s;
     }
     .lock-btn:active { opacity: 0.8; }
 
-    /* ── Main App (hidden until unlocked) ── */
-    #app {
-      display: none;
-      padding-bottom: 100px;
-    }
+    /* ── App ── */
+    #app { display: none; padding-bottom: 100px; }
     #app.visible { display: block; }
+
+    /* ── Loading ── */
+    .loading-wrap {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 60px 20px; color: var(--sub); gap: 14px;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Header ── */
     .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      position: sticky; top: 0; z-index: 100;
       background: rgba(242,242,247,0.85);
       backdrop-filter: saturate(180%) blur(20px);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
       border-bottom: 1px solid var(--border);
       padding: 14px 20px 12px;
     }
-    @media (prefers-color-scheme: dark) {
-      .topbar { background: rgba(0,0,0,0.85); }
-    }
+    @media (prefers-color-scheme: dark) { .topbar { background: rgba(0,0,0,0.85); } }
     .topbar-inner {
-      max-width: 600px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      max-width: 600px; margin: 0 auto;
+      display: flex; justify-content: space-between; align-items: center;
     }
     .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
     .topbar-actions { display: flex; gap: 8px; }
     .icon-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--accent);
-      font-size: 14px;
-      font-weight: 500;
-      padding: 5px 10px;
-      border-radius: 8px;
-      transition: background 0.15s;
+      background: none; border: none; cursor: pointer;
+      color: var(--accent); font-size: 14px; font-weight: 500;
+      padding: 5px 10px; border-radius: 8px; transition: background 0.15s;
     }
     .icon-btn:hover { background: rgba(0,122,255,0.1); }
 
-    /* ── Container ── */
-    .wrap {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 16px 16px 0;
+    /* ── Sync indicator ── */
+    .sync-dot {
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; margin-left: 6px;
+      vertical-align: middle; transition: background 0.3s;
     }
+    .sync-dot.ok     { background: var(--green); }
+    .sync-dot.busy   { background: var(--orange); animation: pulse 1s infinite; }
+    .sync-dot.err    { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── Container ── */
+    .wrap { max-width: 600px; margin: 0 auto; padding: 16px 16px 0; }
 
     /* ── Summary Card ── */
     .summary {
-      background: var(--card);
-      border-radius: 18px;
-      padding: 20px;
-      margin-bottom: 16px;
-      box-shadow: var(--shadow);
+      background: var(--card); border-radius: 18px;
+      padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
     }
     .summary-cycle {
-      font-size: 12px;
-      color: var(--sub);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      margin-bottom: 14px;
+      font-size: 12px; color: var(--sub); font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px;
     }
     .transfer-hero {
-      border-radius: 13px;
-      padding: 16px 20px;
-      text-align: center;
-      margin-bottom: 18px;
-      transition: background 0.3s;
+      border-radius: 13px; padding: 16px 20px;
+      text-align: center; margin-bottom: 18px; transition: background 0.3s;
     }
     .transfer-hero.pay    { background: linear-gradient(135deg, rgba(0,122,255,0.1),  rgba(0,122,255,0.05)); }
     .transfer-hero.receive { background: linear-gradient(135deg, rgba(52,199,89,0.1), rgba(52,199,89,0.05)); }
@@ -211,18 +158,13 @@
     .brow .val.neutral  { color: var(--text); }
     .bdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    /* ── Add Expense Button ── */
+    /* ── Add Button ── */
     .add-row { margin-bottom: 16px; }
     .add-main-btn {
-      width: 100%;
-      padding: 15px;
-      background: var(--card);
-      border: 1.5px dashed rgba(0,122,255,0.45);
-      border-radius: 14px;
-      color: var(--accent);
-      font-size: 15px; font-weight: 600; font-family: inherit;
-      cursor: pointer;
-      box-shadow: var(--shadow);
+      width: 100%; padding: 15px; background: var(--card);
+      border: 1.5px dashed rgba(0,122,255,0.45); border-radius: 14px;
+      color: var(--accent); font-size: 15px; font-weight: 600; font-family: inherit;
+      cursor: pointer; box-shadow: var(--shadow);
       display: flex; align-items: center; justify-content: center; gap: 7px;
       transition: background 0.15s, border-color 0.15s;
     }
@@ -247,16 +189,14 @@
     .edit-btn {
       background: none; border: none; cursor: pointer;
       color: var(--sub); font-size: 15px; line-height: 1;
-      padding: 4px 6px; border-radius: 6px;
-      opacity: 0.4;
+      padding: 4px 6px; border-radius: 6px; opacity: 0.4;
       transition: opacity 0.15s, color 0.15s;
     }
     .edit-btn:hover { opacity: 1; color: var(--accent); }
     .del-btn {
       background: none; border: none; cursor: pointer;
       color: var(--sub); font-size: 20px; line-height: 1;
-      padding: 4px 6px; border-radius: 6px;
-      opacity: 0.4;
+      padding: 4px 6px; border-radius: 6px; opacity: 0.4;
       transition: opacity 0.15s, color 0.15s;
     }
     .del-btn:hover { opacity: 1; color: var(--red); }
@@ -274,23 +214,20 @@
       color: #fff; font-size: 30px; line-height: 1;
       box-shadow: 0 4px 20px rgba(0,122,255,0.45);
       display: flex; align-items: center; justify-content: center;
-      z-index: 200;
-      transition: transform 0.15s, box-shadow 0.15s;
+      z-index: 200; transition: transform 0.15s, box-shadow 0.15s;
     }
     .fab:active { transform: scale(0.93); box-shadow: 0 2px 10px rgba(0,122,255,0.35); }
 
     /* ── Sheet Overlay ── */
     .overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.45);
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
       z-index: 400; display: flex; align-items: flex-end;
       opacity: 0; pointer-events: none; transition: opacity 0.25s;
     }
     .overlay.open { opacity: 1; pointer-events: all; }
     .sheet {
       background: var(--card); border-radius: 20px 20px 0 0;
-      padding: 12px 20px 32px;
-      width: 100%; max-width: 600px; margin: 0 auto;
+      padding: 12px 20px 32px; width: 100%; max-width: 600px; margin: 0 auto;
       transform: translateY(100%);
       transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
       max-height: 90vh; overflow-y: auto;
@@ -315,10 +252,8 @@
     .seg-lbl {
       display: block; padding: 10px 6px 9px;
       border: 1.5px solid var(--border); border-radius: 11px;
-      text-align: center; cursor: pointer;
-      font-size: 13px; line-height: 1.35;
-      transition: border-color 0.2s, background 0.2s, color 0.2s;
-      user-select: none;
+      text-align: center; cursor: pointer; font-size: 13px; line-height: 1.35;
+      transition: border-color 0.2s, background 0.2s, color 0.2s; user-select: none;
     }
     .seg-lbl small { display: block; font-size: 10px; opacity: 0.65; margin-top: 2px; }
     .seg input[type=radio]:checked + .seg-lbl {
@@ -326,13 +261,12 @@
       color: var(--accent); font-weight: 600;
     }
     .submit {
-      width: 100%; padding: 14px;
-      background: var(--accent); color: #fff;
-      border: none; border-radius: 13px;
-      font-size: 16px; font-weight: 600; font-family: inherit;
-      cursor: pointer; margin-top: 10px; transition: opacity 0.15s;
+      width: 100%; padding: 14px; background: var(--accent); color: #fff;
+      border: none; border-radius: 13px; font-size: 16px; font-weight: 600;
+      font-family: inherit; cursor: pointer; margin-top: 10px; transition: opacity 0.15s;
     }
     .submit:active { opacity: 0.8; }
+    .submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* ── Settings ── */
     .srow { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid var(--border); }
@@ -349,18 +283,17 @@
     .danger-zone { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
     .danger-title { font-size: 12px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
     .danger-btn {
-      width: 100%; padding: 12px;
-      background: rgba(255,59,48,0.1); color: var(--red);
-      border: none; border-radius: 11px;
+      width: 100%; padding: 12px; background: rgba(255,59,48,0.1);
+      color: var(--red); border: none; border-radius: 11px;
       font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer;
     }
     .danger-btn:hover { background: rgba(255,59,48,0.18); }
 
     /* ── Confirm Delete ── */
     .confirm-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.5); z-index: 500;
-      display: flex; align-items: center; justify-content: center; padding: 20px;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 500; display: flex; align-items: center;
+      justify-content: center; padding: 20px;
       opacity: 0; pointer-events: none; transition: opacity 0.2s;
     }
     .confirm-overlay.open { opacity: 1; pointer-events: all; }
@@ -387,8 +320,8 @@
       background: #2c2c2e; color: #fff;
       border-radius: 14px; padding: 12px 16px;
       display: flex; align-items: center; gap: 14px;
-      font-size: 14px; white-space: nowrap;
-      z-index: 600; opacity: 0; pointer-events: none;
+      font-size: 14px; white-space: nowrap; z-index: 600;
+      opacity: 0; pointer-events: none;
       transition: opacity 0.22s, transform 0.22s;
       box-shadow: 0 4px 20px rgba(0,0,0,0.35);
     }
@@ -400,7 +333,7 @@
 </head>
 <body>
 
-<!-- ── Lock Screen ── -->
+<!-- Lock Screen -->
 <div id="lock-screen">
   <div class="lock-card">
     <div class="lock-icon">🏠</div>
@@ -414,11 +347,11 @@
   </div>
 </div>
 
-<!-- ── Main App ── -->
+<!-- Main App -->
 <div id="app">
   <header class="topbar">
     <div class="topbar-inner">
-      <h1>家庭账单</h1>
+      <h1>家庭账单<span class="sync-dot ok" id="sync-dot" title="已同步"></span></h1>
       <div class="topbar-actions">
         <button class="icon-btn" onclick="lockApp()">锁定</button>
         <button class="icon-btn" onclick="openSettings()">设置</button>
@@ -472,7 +405,7 @@
   </div>
 </div>
 
-<!-- Add Expense Sheet -->
+<!-- Add / Edit Sheet -->
 <div class="overlay" id="add-overlay" onclick="overlayClick(event,'add-overlay')">
   <div class="sheet">
     <div class="handle"></div>
@@ -547,15 +480,19 @@
 <button class="fab" onclick="openAdd()">+</button>
 
 <script>
-// ── Password (SHA-256 of "house87") ──
+// ── Supabase ──
+const SUPA_URL = 'https://mpvsbeghuueffkjdemcr.supabase.co';
+const SUPA_KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ── Password ──
 const PWD_HASH = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
 const SESSION_KEY = 'hh_auth';
+const SET_KEY     = 'hh_set_v2';
 
 async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256',
-    new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2,'0')).join('');
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
 async function unlock() {
@@ -569,6 +506,7 @@ async function unlock() {
     document.getElementById('lock-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
     err.textContent = '';
+    initApp();
   } else {
     err.textContent = '密码错误，请重试';
     inp.classList.add('error');
@@ -585,55 +523,104 @@ function lockApp() {
   document.getElementById('lock-error').textContent = '';
 }
 
-// Check session on load
-if (sessionStorage.getItem(SESSION_KEY) === '1') {
-  document.getElementById('lock-screen').classList.add('hidden');
-  document.getElementById('app').classList.add('visible');
-}
-
-// ── Data ──
+// ── Seed data ──
 const SEED = [
-  { id:1,  date:"2026-05-22", amount:40.78,  desc:"wine",           type:"shared" },
-  { id:2,  date:"2026-05-22", amount:14.45,  desc:"grocery",        type:"shared" },
-  { id:3,  date:"2026-05-23", amount:60,     desc:"ovo energy",     type:"shared" },
-  { id:4,  date:"2026-05-24", amount:20,     desc:"tennis court",   type:"shared" },
-  { id:5,  date:"2026-05-25", amount:20,     desc:"coffee",         type:"partner_personal" },
-  { id:6,  date:"2026-05-25", amount:18,     desc:"grocery",        type:"shared" },
-  { id:7,  date:"2026-05-27", amount:12,     desc:"costco grocery", type:"shared" },
-  { id:8,  date:"2026-05-27", amount:17,     desc:"pizza",          type:"shared" },
-  { id:9,  date:"2026-05-28", amount:125,    desc:"tennis club",    type:"shared" },
-  { id:10, date:"2026-05-28", amount:17.5,   desc:"wws",            type:"shared" },
-  { id:11, date:"2026-05-28", amount:10,     desc:"coles",          type:"shared" },
-  { id:12, date:"2026-05-29", amount:13,     desc:"burger",         type:"partner_paid" },
-  { id:13, date:"2026-05-29", amount:63,     desc:"cocktails",      type:"shared" },
-  { id:14, date:"2026-05-30", amount:56.19,  desc:"petrol",         type:"shared" },
-  { id:15, date:"2026-05-30", amount:92,     desc:"fat goat",       type:"shared" },
-  { id:16, date:"2026-05-31", amount:25,     desc:"racquets",       type:"partner_personal" },
-  { id:17, date:"2026-06-02", amount:101,    desc:"coles",          type:"shared" },
-  { id:18, date:"2026-06-03", amount:28,     desc:"tennis class",   type:"partner_personal" },
-  { id:19, date:"2026-06-05", amount:12.5,   desc:"coles",          type:"shared" },
+  { id:1,  date:"2026-05-22", amount:40.78,  description:"wine",           type:"shared" },
+  { id:2,  date:"2026-05-22", amount:14.45,  description:"grocery",        type:"shared" },
+  { id:3,  date:"2026-05-23", amount:60,     description:"ovo energy",     type:"shared" },
+  { id:4,  date:"2026-05-24", amount:20,     description:"tennis court",   type:"shared" },
+  { id:5,  date:"2026-05-25", amount:20,     description:"coffee",         type:"partner_personal" },
+  { id:6,  date:"2026-05-25", amount:18,     description:"grocery",        type:"shared" },
+  { id:7,  date:"2026-05-27", amount:12,     description:"costco grocery", type:"shared" },
+  { id:8,  date:"2026-05-27", amount:17,     description:"pizza",          type:"shared" },
+  { id:9,  date:"2026-05-28", amount:125,    description:"tennis club",    type:"shared" },
+  { id:10, date:"2026-05-28", amount:17.5,   description:"wws",            type:"shared" },
+  { id:11, date:"2026-05-28", amount:10,     description:"coles",          type:"shared" },
+  { id:12, date:"2026-05-29", amount:13,     description:"burger",         type:"partner_paid" },
+  { id:13, date:"2026-05-29", amount:63,     description:"cocktails",      type:"shared" },
+  { id:14, date:"2026-05-30", amount:56.19,  description:"petrol",         type:"shared" },
+  { id:15, date:"2026-05-30", amount:92,     description:"fat goat",       type:"shared" },
+  { id:16, date:"2026-05-31", amount:25,     description:"racquets",       type:"partner_personal" },
+  { id:17, date:"2026-06-02", amount:101,    description:"coles",          type:"shared" },
+  { id:18, date:"2026-06-03", amount:28,     description:"tennis class",   type:"partner_personal" },
+  { id:19, date:"2026-06-05", amount:12.5,   description:"coles",          type:"shared" },
 ];
 
-const EXP_KEY = 'hh_exp_v2';
-const SET_KEY = 'hh_set_v2';
+// ── State ──
+let expenses      = [];
+let cfg           = { myRent: 1250, rentDay: 22 };
+let editingId     = null;
+let pendingDelId  = null;
+let pendingDelRow = null;
+let undoTimer     = null;
 
-let expenses = [];
-let cfg = { myRent: 1250, rentDay: 22 };
-let pendingDelId   = null;
-let pendingDelItem = null;
-let undoTimer      = null;
-let editingId      = null;
+// DB row → local object
+const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
+// local object → DB row
+const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type });
 
-function load() {
-  const raw = localStorage.getItem(EXP_KEY);
-  expenses = raw ? JSON.parse(raw) : [...SEED];
-  if (!raw) persist();
-  const rawSet = localStorage.getItem(SET_KEY);
-  if (rawSet) cfg = { ...cfg, ...JSON.parse(rawSet) };
+// ── Sync dot ──
+function setSyncDot(state) {
+  const d = document.getElementById('sync-dot');
+  d.className = 'sync-dot ' + state;
+  d.title = state === 'ok' ? '已同步' : state === 'busy' ? '同步中...' : '同步失败';
 }
-function persist()    { localStorage.setItem(EXP_KEY, JSON.stringify(expenses)); }
-function persistCfg() { localStorage.setItem(SET_KEY, JSON.stringify(cfg)); }
 
+// ── Init ──
+async function initApp() {
+  showLoading(true);
+  loadCfg();
+  await loadExpenses();
+  subscribeRealtime();
+  showLoading(false);
+}
+
+function showLoading(on) {
+  const listEl = document.getElementById('list');
+  if (on) {
+    listEl.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
+    document.getElementById('empty').style.display = 'none';
+  }
+}
+
+async function loadExpenses() {
+  setSyncDot('busy');
+  const { data, error } = await sb.from('expenses').select('*').order('date').order('id');
+  if (error) { console.error(error); setSyncDot('err'); return; }
+  if (data.length === 0) {
+    await insertBatch(SEED.map(toDB));
+    return;
+  }
+  expenses = data.map(toLocal);
+  setSyncDot('ok');
+  render();
+}
+
+async function insertBatch(rows) {
+  setSyncDot('busy');
+  const { data, error } = await sb.from('expenses').insert(rows).select();
+  if (error) { console.error(error); setSyncDot('err'); return; }
+  expenses = data.map(toLocal);
+  setSyncDot('ok');
+  render();
+}
+
+function subscribeRealtime() {
+  sb.channel('expenses-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+      loadExpenses();
+    })
+    .subscribe();
+}
+
+// ── Config (localStorage, per-device) ──
+function loadCfg() {
+  const raw = localStorage.getItem(SET_KEY);
+  if (raw) cfg = { ...cfg, ...JSON.parse(raw) };
+}
+function saveCfg() { localStorage.setItem(SET_KEY, JSON.stringify(cfg)); }
+
+// ── Calc ──
 function calc() {
   let shared = 0, partnerPersonal = 0, partnerPaid = 0;
   expenses.forEach(e => {
@@ -645,8 +632,8 @@ function calc() {
     transfer: cfg.myRent - shared / 2 - partnerPersonal + partnerPaid };
 }
 
+// ── Format ──
 const fmt = n => Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 });
-
 function fmtDate(ds) {
   const d  = new Date(ds + 'T12:00:00');
   const mo = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -654,16 +641,16 @@ function fmtDate(ds) {
   return `${mo[d.getMonth()]}${d.getDate()}日 · ${wk[d.getDay()]}`;
 }
 
+// ── Render ──
 function renderSummary() {
   const { shared, partnerPersonal, partnerPaid, transfer } = calc();
   const recv = transfer < 0;
-  document.getElementById('hero').className = 'transfer-hero ' + (recv ? 'receive' : 'pay');
-  document.getElementById('hero-amount').className = 'transfer-big ' + (recv ? 'receive' : 'pay');
-  document.getElementById('hero-label').textContent = recv ? '本月宝宝需还给你' : '本月应转给宝宝';
-  document.getElementById('hero-num').textContent   = fmt(transfer);
-  document.getElementById('hero-note').textContent  = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
-  document.getElementById('cycle-label').textContent =
-    `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
+  document.getElementById('hero').className           = 'transfer-hero ' + (recv ? 'receive' : 'pay');
+  document.getElementById('hero-amount').className    = 'transfer-big '  + (recv ? 'receive' : 'pay');
+  document.getElementById('hero-label').textContent   = recv ? '本月宝宝需还给你' : '本月应转给宝宝';
+  document.getElementById('hero-num').textContent     = fmt(transfer);
+  document.getElementById('hero-note').textContent    = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
+  document.getElementById('cycle-label').textContent  = `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
   document.getElementById('b-rent').textContent         = `$${fmt(cfg.myRent)}`;
   document.getElementById('b-shared-total').textContent = `$${fmt(shared)}`;
   document.getElementById('b-shared-half').textContent  = `-$${fmt(shared / 2)}`;
@@ -678,11 +665,11 @@ function renderList() {
   emptyEl.style.display = 'none';
   const map = {};
   expenses.forEach(e => { (map[e.date] = map[e.date] || []).push(e); });
-  const dates = Object.keys(map).sort((a, b) => b < a ? -1 : 1);
+  const dates = Object.keys(map).sort((a,b) => b < a ? -1 : 1);
   const TYPE = {
-    shared:           { dot: 'var(--green)',  tag: '共同分担'   },
-    partner_personal: { dot: 'var(--orange)', tag: '替宝宝垫付' },
-    partner_paid:     { dot: 'var(--red)',    tag: '宝宝替我垫' },
+    shared:           { dot:'var(--green)',  tag:'共同分担'   },
+    partner_personal: { dot:'var(--orange)', tag:'替宝宝垫付' },
+    partner_paid:     { dot:'var(--red)',    tag:'宝宝替我垫' },
   };
   listEl.innerHTML = dates.map(date => {
     const rows = map[date].map(e => {
@@ -708,64 +695,17 @@ function renderList() {
           </div>
           <div class="item-actions">
             <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
-            <button class="del-btn" onclick="askDel(${e.id})" title="删除">×</button>
+            <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
           </div>
         </div>`;
     }).join('');
-    return `
-      <div class="date-group">
-        <div class="date-label">${fmtDate(date)}</div>
-        <div class="items-card">${rows}</div>
-      </div>`;
+    return `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${rows}</div></div>`;
   }).join('');
 }
 
 function render() { renderSummary(); renderList(); }
 
-function askDel(id) {
-  const item = expenses.find(e => e.id === id);
-  if (!item) return;
-  pendingDelId = id;
-  document.getElementById('confirm-desc').textContent = `「${item.desc}」$${fmt(item.amount)}`;
-  document.getElementById('confirm-overlay').classList.add('open');
-}
-
-function cancelDel() {
-  pendingDelId = null;
-  document.getElementById('confirm-overlay').classList.remove('open');
-}
-
-function confirmDel() {
-  const item = expenses.find(e => e.id === pendingDelId);
-  if (!item) { cancelDel(); return; }
-  pendingDelItem = item;
-  expenses = expenses.filter(e => e.id !== pendingDelId);
-  pendingDelId = null;
-  persist(); render();
-  document.getElementById('confirm-overlay').classList.remove('open');
-  showUndoToast(item.desc);
-}
-
-function undoDel() {
-  if (!pendingDelItem) return;
-  expenses.push(pendingDelItem);
-  expenses.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
-  pendingDelItem = null;
-  persist(); render(); hideUndoToast();
-}
-
-function showUndoToast(desc) {
-  clearTimeout(undoTimer);
-  document.getElementById('undo-text').textContent = `已删除「${desc}」`;
-  document.getElementById('undo-toast').classList.add('show');
-  undoTimer = setTimeout(hideUndoToast, 5000);
-}
-
-function hideUndoToast() {
-  clearTimeout(undoTimer);
-  document.getElementById('undo-toast').classList.remove('show');
-}
-
+// ── Add / Edit ──
 function openAdd() {
   editingId = null;
   const today = new Date().toISOString().split('T')[0];
@@ -773,8 +713,8 @@ function openAdd() {
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value   = '';
   document.getElementById('ft-shared').checked = true;
-  document.getElementById('add-sheet-title').textContent  = '添加开支';
-  document.getElementById('add-submit-btn').textContent   = '添加';
+  document.getElementById('add-sheet-title').textContent = '添加开支';
+  document.getElementById('add-submit-btn').textContent  = '添加';
   document.getElementById('add-overlay').classList.add('open');
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
@@ -798,39 +738,112 @@ function closeAdd() {
   document.getElementById('add-overlay').classList.remove('open');
 }
 
-function submitExpense() {
+async function submitExpense() {
   const date   = document.getElementById('f-date').value;
   const amount = parseFloat(document.getElementById('f-amount').value);
   const desc   = document.getElementById('f-desc').value.trim();
   const type   = document.querySelector('input[name="ftype"]:checked').value;
   if (!date || !amount || amount <= 0 || !desc) { alert('请填写所有字段'); return; }
+
+  const btn = document.getElementById('add-submit-btn');
+  btn.disabled = true;
+  setSyncDot('busy');
+
   if (editingId !== null) {
+    const row = { date, amount, description: desc, type };
+    const { error } = await sb.from('expenses').update(row).eq('id', editingId);
+    if (error) { console.error(error); setSyncDot('err'); btn.disabled = false; return; }
     const idx = expenses.findIndex(e => e.id === editingId);
     if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
   } else {
-    expenses.push({ id: Date.now(), date, amount, desc, type });
+    const newId = Date.now();
+    const row = { id: newId, date, amount, description: desc, type };
+    const { error } = await sb.from('expenses').insert(row);
+    if (error) { console.error(error); setSyncDot('err'); btn.disabled = false; return; }
+    expenses.push({ id: newId, date, amount, desc, type });
   }
-  persist(); render(); closeAdd();
+
+  setSyncDot('ok');
+  btn.disabled = false;
+  render();
+  closeAdd();
 }
 
+// ── Delete ──
+function askDel(id) {
+  const item = expenses.find(e => e.id === id);
+  if (!item) return;
+  pendingDelId = id;
+  document.getElementById('confirm-desc').textContent = `「${item.desc}」$${fmt(item.amount)}`;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+
+function cancelDel() {
+  pendingDelId = null;
+  document.getElementById('confirm-overlay').classList.remove('open');
+}
+
+async function confirmDel() {
+  const item = expenses.find(e => e.id === pendingDelId);
+  if (!item) { cancelDel(); return; }
+  pendingDelRow = toDB(item);
+  setSyncDot('busy');
+  const { error } = await sb.from('expenses').delete().eq('id', pendingDelId);
+  if (error) { console.error(error); setSyncDot('err'); cancelDel(); return; }
+  expenses = expenses.filter(e => e.id !== pendingDelId);
+  pendingDelId = null;
+  setSyncDot('ok');
+  render();
+  document.getElementById('confirm-overlay').classList.remove('open');
+  showUndoToast(item.desc);
+}
+
+async function undoDel() {
+  if (!pendingDelRow) return;
+  setSyncDot('busy');
+  const { error } = await sb.from('expenses').insert(pendingDelRow);
+  if (error) { console.error(error); setSyncDot('err'); return; }
+  expenses.push(toLocal(pendingDelRow));
+  expenses.sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
+  pendingDelRow = null;
+  setSyncDot('ok');
+  render();
+  hideUndoToast();
+}
+
+function showUndoToast(desc) {
+  clearTimeout(undoTimer);
+  document.getElementById('undo-text').textContent = `已删除「${desc}」`;
+  document.getElementById('undo-toast').classList.add('show');
+  undoTimer = setTimeout(hideUndoToast, 5000);
+}
+function hideUndoToast() {
+  clearTimeout(undoTimer);
+  document.getElementById('undo-toast').classList.remove('show');
+}
+
+// ── Settings ──
 function openSettings() {
   document.getElementById('s-myrent').value  = cfg.myRent;
   document.getElementById('s-rentday').value = cfg.rentDay;
   document.getElementById('set-overlay').classList.add('open');
 }
-
 function saveSettings() {
   const myRent  = parseFloat(document.getElementById('s-myrent').value);
   const rentDay = parseInt(document.getElementById('s-rentday').value);
   if (!myRent || !rentDay || rentDay < 1 || rentDay > 31) { alert('请填写有效的设置值'); return; }
   cfg = { myRent, rentDay };
-  persistCfg(); render();
+  saveCfg(); render();
   document.getElementById('set-overlay').classList.remove('open');
 }
-
-function newCycle() {
+async function newCycle() {
   if (!confirm('确定要清空本期所有记录，开始新账期吗？')) return;
-  expenses = []; persist(); render();
+  setSyncDot('busy');
+  const { error } = await sb.from('expenses').delete().neq('id', 0);
+  if (error) { console.error(error); setSyncDot('err'); return; }
+  expenses = [];
+  setSyncDot('ok');
+  render();
   document.getElementById('set-overlay').classList.remove('open');
 }
 
@@ -838,13 +851,16 @@ function overlayClick(e, id) {
   if (e.target.classList.contains('overlay'))
     document.getElementById(id).classList.remove('open');
 }
-
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-load();
-render();
+// ── Boot ──
+if (sessionStorage.getItem(SESSION_KEY) === '1') {
+  document.getElementById('lock-screen').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+  initApp();
+}
 </script>
 </body>
 </html>
