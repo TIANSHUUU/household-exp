@@ -243,12 +243,21 @@
     .item-right { text-align: right; flex-shrink: 0; }
     .item-amount { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
     .item-share  { font-size: 11px; color: var(--sub); margin-top: 2px; }
+    .item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+    .edit-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--sub); font-size: 15px; line-height: 1;
+      padding: 4px 6px; border-radius: 6px;
+      opacity: 0.4;
+      transition: opacity 0.15s, color 0.15s;
+    }
+    .edit-btn:hover { opacity: 1; color: var(--accent); }
     .del-btn {
       background: none; border: none; cursor: pointer;
       color: var(--sub); font-size: 20px; line-height: 1;
       padding: 4px 6px; border-radius: 6px;
       opacity: 0.4;
-      transition: opacity 0.15s, color 0.15s; flex-shrink: 0;
+      transition: opacity 0.15s, color 0.15s;
     }
     .del-btn:hover { opacity: 1; color: var(--red); }
 
@@ -467,7 +476,7 @@
 <div class="overlay" id="add-overlay" onclick="overlayClick(event,'add-overlay')">
   <div class="sheet">
     <div class="handle"></div>
-    <div class="sheet-title">添加开支</div>
+    <div class="sheet-title" id="add-sheet-title">添加开支</div>
     <div class="fgrp">
       <label class="flabel">日期</label>
       <input type="date" class="finput" id="f-date">
@@ -491,7 +500,7 @@
         <label class="seg-lbl" for="ft-covered">宝宝替我垫<small>全额增加</small></label>
       </div>
     </div>
-    <button class="submit" onclick="submitExpense()">添加</button>
+    <button class="submit" id="add-submit-btn" onclick="submitExpense()">添加</button>
   </div>
 </div>
 
@@ -613,6 +622,7 @@ let cfg = { myRent: 1250, rentDay: 22 };
 let pendingDelId   = null;
 let pendingDelItem = null;
 let undoTimer      = null;
+let editingId      = null;
 
 function load() {
   const raw = localStorage.getItem(EXP_KEY);
@@ -696,7 +706,10 @@ function renderList() {
             <div class="item-amount">${amtTxt}</div>
             <div class="item-share">${shareTxt}</div>
           </div>
-          <button class="del-btn" onclick="askDel(${e.id})" title="删除">×</button>
+          <div class="item-actions">
+            <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
+            <button class="del-btn" onclick="askDel(${e.id})" title="删除">×</button>
+          </div>
         </div>`;
     }).join('');
     return `
@@ -754,16 +767,36 @@ function hideUndoToast() {
 }
 
 function openAdd() {
+  editingId = null;
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('f-date').value   = today;
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value   = '';
   document.getElementById('ft-shared').checked = true;
+  document.getElementById('add-sheet-title').textContent  = '添加开支';
+  document.getElementById('add-submit-btn').textContent   = '添加';
   document.getElementById('add-overlay').classList.add('open');
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
 
-function closeAdd() { document.getElementById('add-overlay').classList.remove('open'); }
+function openEdit(id) {
+  const item = expenses.find(e => e.id === id);
+  if (!item) return;
+  editingId = id;
+  document.getElementById('f-date').value   = item.date;
+  document.getElementById('f-amount').value = item.amount;
+  document.getElementById('f-desc').value   = item.desc;
+  document.querySelector(`input[name="ftype"][value="${item.type}"]`).checked = true;
+  document.getElementById('add-sheet-title').textContent = '编辑开支';
+  document.getElementById('add-submit-btn').textContent  = '保存修改';
+  document.getElementById('add-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-amount').focus(), 350);
+}
+
+function closeAdd() {
+  editingId = null;
+  document.getElementById('add-overlay').classList.remove('open');
+}
 
 function submitExpense() {
   const date   = document.getElementById('f-date').value;
@@ -771,7 +804,12 @@ function submitExpense() {
   const desc   = document.getElementById('f-desc').value.trim();
   const type   = document.querySelector('input[name="ftype"]:checked').value;
   if (!date || !amount || amount <= 0 || !desc) { alert('请填写所有字段'); return; }
-  expenses.push({ id: Date.now(), date, amount, desc, type });
+  if (editingId !== null) {
+    const idx = expenses.findIndex(e => e.id === editingId);
+    if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
+  } else {
+    expenses.push({ id: Date.now(), date, amount, desc, type });
+  }
   persist(); render(); closeAdd();
 }
 
