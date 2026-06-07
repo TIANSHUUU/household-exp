@@ -4,26 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>家庭账单</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://mpvsbeghuueffkjdemcr.supabase.co">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg: #f2f2f7;
-      --card: #ffffff;
-      --text: #1c1c1e;
-      --sub: #6c6c70;
-      --border: #e5e5ea;
-      --accent: #007aff;
-      --green: #34c759;
-      --orange: #ff9500;
-      --red: #ff3b30;
+      --bg: #f2f2f7; --card: #ffffff; --text: #1c1c1e; --sub: #6c6c70;
+      --border: #e5e5ea; --accent: #007aff; --green: #34c759;
+      --orange: #ff9500; --red: #ff3b30;
       --shadow: 0 1px 8px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #000000; --card: #1c1c1e; --text: #ffffff;
-        --sub: #8e8e93; --border: #2c2c2e;
+        --bg: #000000; --card: #1c1c1e; --text: #ffffff; --sub: #8e8e93;
+        --border: #2c2c2e;
         --shadow: 0 1px 8px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
       }
     }
@@ -34,34 +28,31 @@
       min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Lock Screen ── */
+    /* ── Lock ── */
     #lock-screen {
-      position: fixed; inset: 0; background: var(--bg);
-      z-index: 9999; display: flex; align-items: center;
-      justify-content: center; padding: 24px;
+      position: fixed; inset: 0; background: var(--bg); z-index: 9999;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
     }
     #lock-screen.hidden { display: none; }
     .lock-card {
-      background: var(--card); border-radius: 22px;
-      padding: 36px 28px 28px; width: 100%; max-width: 340px;
-      box-shadow: var(--shadow); text-align: center;
+      background: var(--card); border-radius: 22px; padding: 36px 28px 28px;
+      width: 100%; max-width: 340px; box-shadow: var(--shadow); text-align: center;
     }
-    .lock-icon { font-size: 48px; margin-bottom: 14px; }
+    .lock-icon  { font-size: 48px; margin-bottom: 14px; }
     .lock-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-    .lock-sub { font-size: 14px; color: var(--sub); margin-bottom: 26px; }
+    .lock-sub   { font-size: 14px; color: var(--sub); margin-bottom: 26px; }
     .lock-input {
-      width: 100%; padding: 14px 16px;
-      border: 1.5px solid var(--border); border-radius: 12px;
-      font-size: 18px; font-family: inherit;
-      background: var(--bg); color: var(--text);
-      text-align: center; letter-spacing: 3px; outline: none;
-      transition: border-color 0.2s; margin-bottom: 12px;
+      width: 100%; padding: 14px 16px; border: 1.5px solid var(--border);
+      border-radius: 12px; font-size: 18px; font-family: inherit;
+      background: var(--bg); color: var(--text); text-align: center;
+      letter-spacing: 3px; outline: none; transition: border-color 0.2s; margin-bottom: 12px;
     }
     .lock-input:focus { border-color: var(--accent); }
     .lock-input.error { border-color: var(--red); animation: shake 0.35s ease; }
     @keyframes shake {
       0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)}
-      40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}
+      40%{transform:translateX(8px)}   60%{transform:translateX(-5px)}
+      80%{transform:translateX(5px)}
     }
     .lock-error { font-size: 13px; color: var(--red); margin-bottom: 10px; min-height: 18px; }
     .lock-btn {
@@ -77,27 +68,23 @@
 
     /* ── Loading ── */
     .loading-wrap {
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      padding: 60px 20px; color: var(--sub); gap: 14px;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px 20px; color: var(--sub); gap: 14px;
     }
     .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
       animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Header ── */
+    /* ── Topbar ── */
     .topbar {
       position: sticky; top: 0; z-index: 100;
       background: rgba(242,242,247,0.85);
       backdrop-filter: saturate(180%) blur(20px);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 20px 12px;
+      border-bottom: 1px solid var(--border); padding: 14px 20px 12px;
     }
     @media (prefers-color-scheme: dark) { .topbar { background: rgba(0,0,0,0.85); } }
     .topbar-inner {
@@ -107,48 +94,44 @@
     .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
     .topbar-actions { display: flex; gap: 8px; }
     .icon-btn {
-      background: none; border: none; cursor: pointer;
-      color: var(--accent); font-size: 14px; font-weight: 500;
-      padding: 5px 10px; border-radius: 8px; transition: background 0.15s;
+      background: none; border: none; cursor: pointer; color: var(--accent);
+      font-size: 14px; font-weight: 500; padding: 5px 10px; border-radius: 8px;
+      transition: background 0.15s;
     }
     .icon-btn:hover { background: rgba(0,122,255,0.1); }
-
-    /* ── Sync indicator ── */
     .sync-dot {
-      display: inline-block; width: 7px; height: 7px;
-      border-radius: 50%; margin-left: 6px;
-      vertical-align: middle; transition: background 0.3s;
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      margin-left: 6px; vertical-align: middle; transition: background 0.3s;
     }
-    .sync-dot.ok     { background: var(--green); }
-    .sync-dot.busy   { background: var(--orange); animation: pulse 1s infinite; }
-    .sync-dot.err    { background: var(--red); }
+    .sync-dot.ok   { background: var(--green); }
+    .sync-dot.busy { background: var(--orange); animation: pulse 1s infinite; }
+    .sync-dot.err  { background: var(--red); }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     /* ── Container ── */
     .wrap { max-width: 600px; margin: 0 auto; padding: 16px 16px 0; }
 
-    /* ── Summary Card ── */
+    /* ── Summary ── */
     .summary {
-      background: var(--card); border-radius: 18px;
-      padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+      background: var(--card); border-radius: 18px; padding: 20px;
+      margin-bottom: 16px; box-shadow: var(--shadow);
     }
     .summary-cycle {
       font-size: 12px; color: var(--sub); font-weight: 500;
       text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px;
     }
     .transfer-hero {
-      border-radius: 13px; padding: 16px 20px;
-      text-align: center; margin-bottom: 18px; transition: background 0.3s;
+      border-radius: 13px; padding: 16px 20px; text-align: center;
+      margin-bottom: 18px; transition: background 0.3s;
     }
-    .transfer-hero.pay    { background: linear-gradient(135deg, rgba(0,122,255,0.1),  rgba(0,122,255,0.05)); }
-    .transfer-hero.receive { background: linear-gradient(135deg, rgba(52,199,89,0.1), rgba(52,199,89,0.05)); }
+    .transfer-hero.pay     { background: linear-gradient(135deg, rgba(0,122,255,0.1),  rgba(0,122,255,0.05)); }
+    .transfer-hero.receive { background: linear-gradient(135deg, rgba(52,199,89,0.1),  rgba(52,199,89,0.05)); }
     .transfer-label { font-size: 12px; color: var(--sub); margin-bottom: 4px; }
     .transfer-big { font-size: 40px; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
     .transfer-big.pay     { color: var(--accent); }
     .transfer-big.receive { color: var(--green); }
     .transfer-big .sym    { font-size: 24px; }
     .transfer-note { font-size: 11px; color: var(--sub); margin-top: 4px; }
-
     .breakdown { display: flex; flex-direction: column; gap: 9px; }
     .brow { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .brow .lbl { display: flex; align-items: center; gap: 7px; color: var(--sub); }
@@ -158,7 +141,7 @@
     .brow .val.neutral  { color: var(--text); }
     .bdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    /* ── Add Button ── */
+    /* ── Add button ── */
     .add-row { margin-bottom: 16px; }
     .add-main-btn {
       width: 100%; padding: 15px; background: var(--card);
@@ -172,32 +155,30 @@
     .add-main-btn:active { opacity: 0.7; }
     .add-main-btn .plus  { font-size: 20px; line-height: 1; }
 
-    /* ── Date Groups ── */
+    /* ── List ── */
     .date-group { margin-bottom: 14px; }
     .date-label { font-size: 12px; font-weight: 600; color: var(--sub); padding: 0 4px 8px; letter-spacing: 0.2px; }
     .items-card { background: var(--card); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
     .item { display: flex; align-items: center; padding: 11px 14px; gap: 11px; }
     .item:not(:last-child) { border-bottom: 1px solid var(--border); }
-    .item-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    .item-body { flex: 1; min-width: 0; }
-    .item-desc { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item-tag  { font-size: 11px; color: var(--sub); margin-top: 2px; }
-    .item-right { text-align: right; flex-shrink: 0; }
+    .item-dot    { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .item-body   { flex: 1; min-width: 0; }
+    .item-desc   { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-tag    { font-size: 11px; color: var(--sub); margin-top: 2px; }
+    .item-right  { text-align: right; flex-shrink: 0; }
     .item-amount { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
     .item-share  { font-size: 11px; color: var(--sub); margin-top: 2px; }
     .item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
     .edit-btn {
-      background: none; border: none; cursor: pointer;
-      color: var(--sub); font-size: 15px; line-height: 1;
-      padding: 4px 6px; border-radius: 6px; opacity: 0.4;
-      transition: opacity 0.15s, color 0.15s;
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+      opacity: 0.4; transition: opacity 0.15s, color 0.15s;
     }
     .edit-btn:hover { opacity: 1; color: var(--accent); }
     .del-btn {
-      background: none; border: none; cursor: pointer;
-      color: var(--sub); font-size: 20px; line-height: 1;
-      padding: 4px 6px; border-radius: 6px; opacity: 0.4;
-      transition: opacity 0.15s, color 0.15s;
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      font-size: 20px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+      opacity: 0.4; transition: opacity 0.15s, color 0.15s;
     }
     .del-btn:hover { opacity: 1; color: var(--red); }
 
@@ -218,10 +199,10 @@
     }
     .fab:active { transform: scale(0.93); box-shadow: 0 2px 10px rgba(0,122,255,0.35); }
 
-    /* ── Sheet Overlay ── */
+    /* ── Sheet ── */
     .overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-      z-index: 400; display: flex; align-items: flex-end;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 400;
+      display: flex; align-items: flex-end;
       opacity: 0; pointer-events: none; transition: opacity 0.25s;
     }
     .overlay.open { opacity: 1; pointer-events: all; }
@@ -240,19 +221,17 @@
     .fgrp { margin-bottom: 14px; }
     .flabel { display: block; font-size: 12px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; }
     .finput {
-      width: 100%; padding: 12px 14px;
-      border: 1.5px solid var(--border); border-radius: 11px;
-      font-size: 16px; font-family: inherit;
-      background: var(--bg); color: var(--text); outline: none;
-      transition: border-color 0.2s;
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: 11px; font-size: 16px; font-family: inherit;
+      background: var(--bg); color: var(--text); outline: none; transition: border-color 0.2s;
     }
     .finput:focus { border-color: var(--accent); }
     .seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .seg input[type=radio] { display: none; }
     .seg-lbl {
-      display: block; padding: 10px 6px 9px;
-      border: 1.5px solid var(--border); border-radius: 11px;
-      text-align: center; cursor: pointer; font-size: 13px; line-height: 1.35;
+      display: block; padding: 10px 6px 9px; border: 1.5px solid var(--border);
+      border-radius: 11px; text-align: center; cursor: pointer;
+      font-size: 13px; line-height: 1.35;
       transition: border-color 0.2s, background 0.2s, color 0.2s; user-select: none;
     }
     .seg-lbl small { display: block; font-size: 10px; opacity: 0.65; margin-top: 2px; }
@@ -265,7 +244,7 @@
       border: none; border-radius: 13px; font-size: 16px; font-weight: 600;
       font-family: inherit; cursor: pointer; margin-top: 10px; transition: opacity 0.15s;
     }
-    .submit:active { opacity: 0.8; }
+    .submit:active   { opacity: 0.8; }
     .submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* ── Settings ── */
@@ -274,66 +253,65 @@
     .srow-lbl { font-size: 15px; }
     .srow-lbl small { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
     .sinput {
-      width: 110px; padding: 8px 12px;
-      border: 1.5px solid var(--border); border-radius: 9px;
-      font-size: 15px; font-family: inherit; text-align: right;
+      width: 110px; padding: 8px 12px; border: 1.5px solid var(--border);
+      border-radius: 9px; font-size: 15px; font-family: inherit; text-align: right;
       background: var(--bg); color: var(--text); outline: none;
     }
     .sinput:focus { border-color: var(--accent); }
     .danger-zone { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
     .danger-title { font-size: 12px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
     .danger-btn {
-      width: 100%; padding: 12px; background: rgba(255,59,48,0.1);
-      color: var(--red); border: none; border-radius: 11px;
-      font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer;
+      width: 100%; padding: 12px; background: rgba(255,59,48,0.1); color: var(--red);
+      border: none; border-radius: 11px; font-size: 15px; font-weight: 500;
+      font-family: inherit; cursor: pointer;
     }
     .danger-btn:hover { background: rgba(255,59,48,0.18); }
 
-    /* ── Confirm Delete ── */
+    /* ── Confirm ── */
     .confirm-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      z-index: 500; display: flex; align-items: center;
-      justify-content: center; padding: 20px;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
       opacity: 0; pointer-events: none; transition: opacity 0.2s;
     }
     .confirm-overlay.open { opacity: 1; pointer-events: all; }
     .confirm-box {
       background: var(--card); border-radius: 18px; padding: 28px 22px 22px;
-      width: 100%; max-width: 300px;
-      transform: scale(0.88);
+      width: 100%; max-width: 300px; transform: scale(0.88);
       transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .confirm-overlay.open .confirm-box { transform: scale(1); }
-    .confirm-icon { font-size: 36px; text-align: center; margin-bottom: 10px; }
+    .confirm-icon  { font-size: 36px; text-align: center; margin-bottom: 10px; }
     .confirm-title { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 6px; }
     .confirm-desc  { font-size: 14px; color: var(--sub); text-align: center; margin-bottom: 22px; line-height: 1.45; }
     .confirm-btns  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .cbtn-cancel { padding: 13px; background: var(--bg); border: none; border-radius: 12px; font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer; color: var(--text); }
-    .cbtn-cancel:hover { opacity: 0.8; }
-    .cbtn-delete { padding: 13px; background: rgba(255,59,48,0.12); border: none; border-radius: 12px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; color: var(--red); }
+    .cbtn-cancel {
+      padding: 13px; background: var(--bg); border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 500; font-family: inherit; cursor: pointer; color: var(--text);
+    }
+    .cbtn-delete {
+      padding: 13px; background: rgba(255,59,48,0.12); border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; color: var(--red);
+    }
     .cbtn-delete:hover { background: rgba(255,59,48,0.2); }
 
     /* ── Undo Toast ── */
     .undo-toast {
       position: fixed; bottom: 104px; left: 50%;
       transform: translateX(-50%) translateY(12px);
-      background: #2c2c2e; color: #fff;
-      border-radius: 14px; padding: 12px 16px;
-      display: flex; align-items: center; gap: 14px;
-      font-size: 14px; white-space: nowrap; z-index: 600;
-      opacity: 0; pointer-events: none;
+      background: #2c2c2e; color: #fff; border-radius: 14px; padding: 12px 16px;
+      display: flex; align-items: center; gap: 14px; font-size: 14px; white-space: nowrap;
+      z-index: 600; opacity: 0; pointer-events: none;
       transition: opacity 0.22s, transform 0.22s;
       box-shadow: 0 4px 20px rgba(0,0,0,0.35);
     }
     @media (prefers-color-scheme: dark) { .undo-toast { background: #3a3a3c; } }
     .undo-toast.show { opacity: 1; pointer-events: all; transform: translateX(-50%) translateY(0); }
     .undo-text { flex: 1; }
-    .undo-btn { background: none; border: none; cursor: pointer; color: #4da1ff; font-size: 14px; font-weight: 700; font-family: inherit; padding: 0; white-space: nowrap; }
+    .undo-btn  { background: none; border: none; cursor: pointer; color: #4da1ff; font-size: 14px; font-weight: 700; font-family: inherit; padding: 0; white-space: nowrap; }
   </style>
 </head>
 <body>
 
-<!-- Lock Screen -->
 <div id="lock-screen">
   <div class="lock-card">
     <div class="lock-icon">🏠</div>
@@ -347,11 +325,10 @@
   </div>
 </div>
 
-<!-- Main App -->
 <div id="app">
   <header class="topbar">
     <div class="topbar-inner">
-      <h1>家庭账单<span class="sync-dot ok" id="sync-dot" title="已同步"></span></h1>
+      <h1>家庭账单<span class="sync-dot ok" id="sync-dot"></span></h1>
       <div class="topbar-actions">
         <button class="icon-btn" onclick="lockApp()">锁定</button>
         <button class="icon-btn" onclick="openSettings()">设置</button>
@@ -425,7 +402,7 @@
     <div class="fgrp">
       <label class="flabel">类型</label>
       <div class="seg">
-        <input type="radio" name="ftype" id="ft-shared" value="shared" checked>
+        <input type="radio" name="ftype" id="ft-shared"  value="shared" checked>
         <label class="seg-lbl" for="ft-shared">共同分担<small>各付一半</small></label>
         <input type="radio" name="ftype" id="ft-partner" value="partner_personal">
         <label class="seg-lbl" for="ft-partner">替宝宝垫付<small>全额抵扣</small></label>
@@ -458,12 +435,12 @@
   </div>
 </div>
 
-<!-- Delete Confirm -->
+<!-- Confirm Delete -->
 <div class="confirm-overlay" id="confirm-overlay">
   <div class="confirm-box">
     <div class="confirm-icon">🗑️</div>
     <div class="confirm-title">确认删除？</div>
-    <div class="confirm-desc" id="confirm-desc">删除后可通过"撤销"恢复</div>
+    <div class="confirm-desc" id="confirm-desc"></div>
     <div class="confirm-btns">
       <button class="cbtn-cancel" onclick="cancelDel()">取消</button>
       <button class="cbtn-delete" onclick="confirmDel()">删除</button>
@@ -480,28 +457,56 @@
 <button class="fab" onclick="openAdd()">+</button>
 
 <script>
-// ── Supabase ──
-const SUPA_URL = 'https://mpvsbeghuueffkjdemcr.supabase.co';
-const SUPA_KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+// ── Supabase REST (no SDK) ──
+const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
+const KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
+const H   = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+
+async function dbGet() {
+  const r = await fetch(`${API}/expenses?select=*&order=date.asc,id.asc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function dbInsert(rows) {
+  const body = Array.isArray(rows) ? rows : [rows];
+  const r = await fetch(`${API}/expenses`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function dbUpdate(id, row) {
+  const r = await fetch(`${API}/expenses?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(row),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function dbDelete(id) {
+  const r = await fetch(`${API}/expenses?id=eq.${id}`, { method: 'DELETE', headers: H });
+  if (!r.ok) throw new Error(await r.text());
+}
+async function dbDeleteAll() {
+  const r = await fetch(`${API}/expenses?id=gt.0`, { method: 'DELETE', headers: H });
+  if (!r.ok) throw new Error(await r.text());
+}
 
 // ── Password ──
-const PWD_HASH = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
+const PWD_HASH   = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
 const SESSION_KEY = 'hh_auth';
 const SET_KEY     = 'hh_set_v2';
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+async function sha256(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
-
 async function unlock() {
-  const val = document.getElementById('lock-input').value;
   const inp = document.getElementById('lock-input');
   const err = document.getElementById('lock-error');
-  if (!val) { err.textContent = '请输入密码'; return; }
-  const hash = await sha256(val);
-  if (hash === PWD_HASH) {
+  if (!inp.value) { err.textContent = '请输入密码'; return; }
+  if (await sha256(inp.value) === PWD_HASH) {
     sessionStorage.setItem(SESSION_KEY, '1');
     document.getElementById('lock-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
@@ -514,7 +519,6 @@ async function unlock() {
     setTimeout(() => inp.classList.remove('error'), 400);
   }
 }
-
 function lockApp() {
   sessionStorage.removeItem(SESSION_KEY);
   document.getElementById('lock-screen').classList.remove('hidden');
@@ -523,47 +527,44 @@ function lockApp() {
   document.getElementById('lock-error').textContent = '';
 }
 
-// ── Seed data ──
+// ── Seed ──
 const SEED = [
-  { id:1,  date:"2026-05-22", amount:40.78,  description:"wine",           type:"shared" },
-  { id:2,  date:"2026-05-22", amount:14.45,  description:"grocery",        type:"shared" },
-  { id:3,  date:"2026-05-23", amount:60,     description:"ovo energy",     type:"shared" },
-  { id:4,  date:"2026-05-24", amount:20,     description:"tennis court",   type:"shared" },
-  { id:5,  date:"2026-05-25", amount:20,     description:"coffee",         type:"partner_personal" },
-  { id:6,  date:"2026-05-25", amount:18,     description:"grocery",        type:"shared" },
-  { id:7,  date:"2026-05-27", amount:12,     description:"costco grocery", type:"shared" },
-  { id:8,  date:"2026-05-27", amount:17,     description:"pizza",          type:"shared" },
-  { id:9,  date:"2026-05-28", amount:125,    description:"tennis club",    type:"shared" },
-  { id:10, date:"2026-05-28", amount:17.5,   description:"wws",            type:"shared" },
-  { id:11, date:"2026-05-28", amount:10,     description:"coles",          type:"shared" },
-  { id:12, date:"2026-05-29", amount:13,     description:"burger",         type:"partner_paid" },
-  { id:13, date:"2026-05-29", amount:63,     description:"cocktails",      type:"shared" },
-  { id:14, date:"2026-05-30", amount:56.19,  description:"petrol",         type:"shared" },
-  { id:15, date:"2026-05-30", amount:92,     description:"fat goat",       type:"shared" },
-  { id:16, date:"2026-05-31", amount:25,     description:"racquets",       type:"partner_personal" },
-  { id:17, date:"2026-06-02", amount:101,    description:"coles",          type:"shared" },
-  { id:18, date:"2026-06-03", amount:28,     description:"tennis class",   type:"partner_personal" },
-  { id:19, date:"2026-06-05", amount:12.5,   description:"coles",          type:"shared" },
+  {id:1,  date:"2026-05-22",amount:40.78, description:"wine",           type:"shared"},
+  {id:2,  date:"2026-05-22",amount:14.45, description:"grocery",        type:"shared"},
+  {id:3,  date:"2026-05-23",amount:60,    description:"ovo energy",     type:"shared"},
+  {id:4,  date:"2026-05-24",amount:20,    description:"tennis court",   type:"shared"},
+  {id:5,  date:"2026-05-25",amount:20,    description:"coffee",         type:"partner_personal"},
+  {id:6,  date:"2026-05-25",amount:18,    description:"grocery",        type:"shared"},
+  {id:7,  date:"2026-05-27",amount:12,    description:"costco grocery", type:"shared"},
+  {id:8,  date:"2026-05-27",amount:17,    description:"pizza",          type:"shared"},
+  {id:9,  date:"2026-05-28",amount:125,   description:"tennis club",    type:"shared"},
+  {id:10, date:"2026-05-28",amount:17.5,  description:"wws",            type:"shared"},
+  {id:11, date:"2026-05-28",amount:10,    description:"coles",          type:"shared"},
+  {id:12, date:"2026-05-29",amount:13,    description:"burger",         type:"partner_paid"},
+  {id:13, date:"2026-05-29",amount:63,    description:"cocktails",      type:"shared"},
+  {id:14, date:"2026-05-30",amount:56.19, description:"petrol",         type:"shared"},
+  {id:15, date:"2026-05-30",amount:92,    description:"fat goat",       type:"shared"},
+  {id:16, date:"2026-05-31",amount:25,    description:"racquets",       type:"partner_personal"},
+  {id:17, date:"2026-06-02",amount:101,   description:"coles",          type:"shared"},
+  {id:18, date:"2026-06-03",amount:28,    description:"tennis class",   type:"partner_personal"},
+  {id:19, date:"2026-06-05",amount:12.5,  description:"coles",          type:"shared"},
 ];
 
 // ── State ──
-let expenses      = [];
-let cfg           = { myRent: 1250, rentDay: 22 };
-let editingId     = null;
-let pendingDelId  = null;
+let expenses     = [];
+let cfg          = { myRent: 1250, rentDay: 22 };
+let editingId    = null;
+let pendingDelId = null;
 let pendingDelRow = null;
-let undoTimer     = null;
+let undoTimer    = null;
 
-// DB row → local object
 const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
-// local object → DB row
 const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type });
 
 // ── Sync dot ──
-function setSyncDot(state) {
+function setSyncDot(s) {
   const d = document.getElementById('sync-dot');
-  d.className = 'sync-dot ' + state;
-  d.title = state === 'ok' ? '已同步' : state === 'busy' ? '同步中...' : '同步失败';
+  d.className = 'sync-dot ' + s;
 }
 
 // ── Init ──
@@ -571,49 +572,53 @@ async function initApp() {
   showLoading(true);
   loadCfg();
   await loadExpenses();
-  subscribeRealtime();
+  startPolling();
   showLoading(false);
 }
 
 function showLoading(on) {
-  const listEl = document.getElementById('list');
   if (on) {
-    listEl.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
+    document.getElementById('list').innerHTML =
+      '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
     document.getElementById('empty').style.display = 'none';
   }
 }
 
 async function loadExpenses() {
   setSyncDot('busy');
-  const { data, error } = await sb.from('expenses').select('*').order('date').order('id');
-  if (error) { console.error(error); setSyncDot('err'); return; }
-  if (data.length === 0) {
-    await insertBatch(SEED.map(toDB));
-    return;
+  try {
+    const data = await dbGet();
+    if (data.length === 0) {
+      const inserted = await dbInsert(SEED);
+      expenses = inserted.map(toLocal);
+    } else {
+      expenses = data.map(toLocal);
+    }
+    setSyncDot('ok');
+    render();
+  } catch(e) {
+    console.error(e);
+    setSyncDot('err');
   }
-  expenses = data.map(toLocal);
-  setSyncDot('ok');
-  render();
 }
 
-async function insertBatch(rows) {
-  setSyncDot('busy');
-  const { data, error } = await sb.from('expenses').insert(rows).select();
-  if (error) { console.error(error); setSyncDot('err'); return; }
-  expenses = data.map(toLocal);
-  setSyncDot('ok');
-  render();
+// Poll every 30s — only re-render if data changed
+function startPolling() {
+  setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const data = await dbGet();
+      const sig = d => d.map(r => `${r.id}:${r.amount}:${r.description}:${r.type}:${r.date}`).join('|');
+      if (sig(data) !== sig(expenses.map(toDB))) {
+        expenses = data.map(toLocal);
+        render();
+      }
+      setSyncDot('ok');
+    } catch(e) { setSyncDot('err'); }
+  }, 30000);
 }
 
-function subscribeRealtime() {
-  sb.channel('expenses-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
-      loadExpenses();
-    })
-    .subscribe();
-}
-
-// ── Config (localStorage, per-device) ──
+// ── Config ──
 function loadCfg() {
   const raw = localStorage.getItem(SET_KEY);
   if (raw) cfg = { ...cfg, ...JSON.parse(raw) };
@@ -622,14 +627,13 @@ function saveCfg() { localStorage.setItem(SET_KEY, JSON.stringify(cfg)); }
 
 // ── Calc ──
 function calc() {
-  let shared = 0, partnerPersonal = 0, partnerPaid = 0;
+  let shared = 0, pp = 0, cp = 0;
   expenses.forEach(e => {
-    if      (e.type === 'shared')           shared          += e.amount;
-    else if (e.type === 'partner_personal') partnerPersonal += e.amount;
-    else if (e.type === 'partner_paid')     partnerPaid     += e.amount;
+    if      (e.type === 'shared')           shared += e.amount;
+    else if (e.type === 'partner_personal') pp     += e.amount;
+    else if (e.type === 'partner_paid')     cp     += e.amount;
   });
-  return { shared, partnerPersonal, partnerPaid,
-    transfer: cfg.myRent - shared / 2 - partnerPersonal + partnerPaid };
+  return { shared, pp, cp, transfer: cfg.myRent - shared / 2 - pp + cp };
 }
 
 // ── Format ──
@@ -643,19 +647,19 @@ function fmtDate(ds) {
 
 // ── Render ──
 function renderSummary() {
-  const { shared, partnerPersonal, partnerPaid, transfer } = calc();
+  const { shared, pp, cp, transfer } = calc();
   const recv = transfer < 0;
-  document.getElementById('hero').className           = 'transfer-hero ' + (recv ? 'receive' : 'pay');
-  document.getElementById('hero-amount').className    = 'transfer-big '  + (recv ? 'receive' : 'pay');
-  document.getElementById('hero-label').textContent   = recv ? '本月宝宝需还给你' : '本月应转给宝宝';
-  document.getElementById('hero-num').textContent     = fmt(transfer);
-  document.getElementById('hero-note').textContent    = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
-  document.getElementById('cycle-label').textContent  = `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
-  document.getElementById('b-rent').textContent         = `$${fmt(cfg.myRent)}`;
-  document.getElementById('b-shared-total').textContent = `$${fmt(shared)}`;
-  document.getElementById('b-shared-half').textContent  = `-$${fmt(shared / 2)}`;
-  document.getElementById('b-partner-paid').textContent = partnerPersonal > 0 ? `-$${fmt(partnerPersonal)}` : '$0.00';
-  document.getElementById('b-covered').textContent      = partnerPaid > 0 ? `+$${fmt(partnerPaid)}` : '$0.00';
+  document.getElementById('hero').className          = 'transfer-hero ' + (recv ? 'receive' : 'pay');
+  document.getElementById('hero-amount').className   = 'transfer-big '  + (recv ? 'receive' : 'pay');
+  document.getElementById('hero-label').textContent  = recv ? '本月宝宝需还给你' : '本月应转给宝宝';
+  document.getElementById('hero-num').textContent    = fmt(transfer);
+  document.getElementById('hero-note').textContent   = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
+  document.getElementById('cycle-label').textContent = `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
+  document.getElementById('b-rent').textContent          = `$${fmt(cfg.myRent)}`;
+  document.getElementById('b-shared-total').textContent  = `$${fmt(shared)}`;
+  document.getElementById('b-shared-half').textContent   = `-$${fmt(shared / 2)}`;
+  document.getElementById('b-partner-paid').textContent  = pp > 0 ? `-$${fmt(pp)}` : '$0.00';
+  document.getElementById('b-covered').textContent       = cp > 0 ? `+$${fmt(cp)}` : '$0.00';
 }
 
 function renderList() {
@@ -674,30 +678,23 @@ function renderList() {
   listEl.innerHTML = dates.map(date => {
     const rows = map[date].map(e => {
       const t = TYPE[e.type];
-      let amtTxt, shareTxt;
-      if (e.type === 'shared') {
-        amtTxt = `$${fmt(e.amount)}`; shareTxt = `各付 $${fmt(e.amount / 2)}`;
-      } else if (e.type === 'partner_personal') {
-        amtTxt = `$${fmt(e.amount)}`; shareTxt = '全额抵扣';
-      } else {
-        amtTxt = `−$${fmt(e.amount)}`; shareTxt = '全额增加';
-      }
-      return `
-        <div class="item">
-          <span class="item-dot" style="background:${t.dot}"></span>
-          <div class="item-body">
-            <div class="item-desc">${escHtml(e.desc)}</div>
-            <div class="item-tag">${t.tag}</div>
-          </div>
-          <div class="item-right">
-            <div class="item-amount">${amtTxt}</div>
-            <div class="item-share">${shareTxt}</div>
-          </div>
-          <div class="item-actions">
-            <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
-            <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
-          </div>
-        </div>`;
+      const amtTxt   = e.type === 'partner_paid' ? `−$${fmt(e.amount)}` : `$${fmt(e.amount)}`;
+      const shareTxt = e.type === 'shared' ? `各付 $${fmt(e.amount/2)}` : e.type === 'partner_personal' ? '全额抵扣' : '全额增加';
+      return `<div class="item">
+        <span class="item-dot" style="background:${t.dot}"></span>
+        <div class="item-body">
+          <div class="item-desc">${escHtml(e.desc)}</div>
+          <div class="item-tag">${t.tag}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount">${amtTxt}</div>
+          <div class="item-share">${shareTxt}</div>
+        </div>
+        <div class="item-actions">
+          <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
+          <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
+        </div>
+      </div>`;
     }).join('');
     return `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${rows}</div></div>`;
   }).join('');
@@ -708,8 +705,7 @@ function render() { renderSummary(); renderList(); }
 // ── Add / Edit ──
 function openAdd() {
   editingId = null;
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('f-date').value   = today;
+  document.getElementById('f-date').value   = new Date().toISOString().split('T')[0];
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value   = '';
   document.getElementById('ft-shared').checked = true;
@@ -718,25 +714,20 @@ function openAdd() {
   document.getElementById('add-overlay').classList.add('open');
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
-
 function openEdit(id) {
-  const item = expenses.find(e => e.id === id);
-  if (!item) return;
+  const e = expenses.find(x => x.id === id);
+  if (!e) return;
   editingId = id;
-  document.getElementById('f-date').value   = item.date;
-  document.getElementById('f-amount').value = item.amount;
-  document.getElementById('f-desc').value   = item.desc;
-  document.querySelector(`input[name="ftype"][value="${item.type}"]`).checked = true;
+  document.getElementById('f-date').value   = e.date;
+  document.getElementById('f-amount').value = e.amount;
+  document.getElementById('f-desc').value   = e.desc;
+  document.querySelector(`input[name="ftype"][value="${e.type}"]`).checked = true;
   document.getElementById('add-sheet-title').textContent = '编辑开支';
   document.getElementById('add-submit-btn').textContent  = '保存修改';
   document.getElementById('add-overlay').classList.add('open');
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
-
-function closeAdd() {
-  editingId = null;
-  document.getElementById('add-overlay').classList.remove('open');
-}
+function closeAdd() { editingId = null; document.getElementById('add-overlay').classList.remove('open'); }
 
 async function submitExpense() {
   const date   = document.getElementById('f-date').value;
@@ -744,71 +735,58 @@ async function submitExpense() {
   const desc   = document.getElementById('f-desc').value.trim();
   const type   = document.querySelector('input[name="ftype"]:checked').value;
   if (!date || !amount || amount <= 0 || !desc) { alert('请填写所有字段'); return; }
-
   const btn = document.getElementById('add-submit-btn');
-  btn.disabled = true;
-  setSyncDot('busy');
-
-  if (editingId !== null) {
-    const row = { date, amount, description: desc, type };
-    const { error } = await sb.from('expenses').update(row).eq('id', editingId);
-    if (error) { console.error(error); setSyncDot('err'); btn.disabled = false; return; }
-    const idx = expenses.findIndex(e => e.id === editingId);
-    if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
-  } else {
-    const newId = Date.now();
-    const row = { id: newId, date, amount, description: desc, type };
-    const { error } = await sb.from('expenses').insert(row);
-    if (error) { console.error(error); setSyncDot('err'); btn.disabled = false; return; }
-    expenses.push({ id: newId, date, amount, desc, type });
-  }
-
-  setSyncDot('ok');
+  btn.disabled = true; setSyncDot('busy');
+  try {
+    if (editingId !== null) {
+      await dbUpdate(editingId, { date, amount, description: desc, type });
+      const idx = expenses.findIndex(x => x.id === editingId);
+      if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
+    } else {
+      const newId = Date.now();
+      await dbInsert({ id: newId, date, amount, description: desc, type });
+      expenses.push({ id: newId, date, amount, desc, type });
+    }
+    setSyncDot('ok'); render(); closeAdd();
+  } catch(e) { console.error(e); setSyncDot('err'); }
   btn.disabled = false;
-  render();
-  closeAdd();
 }
 
 // ── Delete ──
 function askDel(id) {
-  const item = expenses.find(e => e.id === id);
-  if (!item) return;
+  const e = expenses.find(x => x.id === id);
+  if (!e) return;
   pendingDelId = id;
-  document.getElementById('confirm-desc').textContent = `「${item.desc}」$${fmt(item.amount)}`;
+  document.getElementById('confirm-desc').textContent = `「${e.desc}」$${fmt(e.amount)}`;
   document.getElementById('confirm-overlay').classList.add('open');
 }
-
-function cancelDel() {
-  pendingDelId = null;
-  document.getElementById('confirm-overlay').classList.remove('open');
-}
+function cancelDel() { pendingDelId = null; document.getElementById('confirm-overlay').classList.remove('open'); }
 
 async function confirmDel() {
-  const item = expenses.find(e => e.id === pendingDelId);
-  if (!item) { cancelDel(); return; }
-  pendingDelRow = toDB(item);
+  const e = expenses.find(x => x.id === pendingDelId);
+  if (!e) { cancelDel(); return; }
+  pendingDelRow = toDB(e);
   setSyncDot('busy');
-  const { error } = await sb.from('expenses').delete().eq('id', pendingDelId);
-  if (error) { console.error(error); setSyncDot('err'); cancelDel(); return; }
-  expenses = expenses.filter(e => e.id !== pendingDelId);
-  pendingDelId = null;
-  setSyncDot('ok');
-  render();
-  document.getElementById('confirm-overlay').classList.remove('open');
-  showUndoToast(item.desc);
+  try {
+    await dbDelete(pendingDelId);
+    expenses = expenses.filter(x => x.id !== pendingDelId);
+    pendingDelId = null;
+    setSyncDot('ok'); render();
+    document.getElementById('confirm-overlay').classList.remove('open');
+    showUndoToast(e.desc);
+  } catch(err) { console.error(err); setSyncDot('err'); }
 }
 
 async function undoDel() {
   if (!pendingDelRow) return;
   setSyncDot('busy');
-  const { error } = await sb.from('expenses').insert(pendingDelRow);
-  if (error) { console.error(error); setSyncDot('err'); return; }
-  expenses.push(toLocal(pendingDelRow));
-  expenses.sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
-  pendingDelRow = null;
-  setSyncDot('ok');
-  render();
-  hideUndoToast();
+  try {
+    await dbInsert(pendingDelRow);
+    expenses.push(toLocal(pendingDelRow));
+    expenses.sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
+    pendingDelRow = null;
+    setSyncDot('ok'); render(); hideUndoToast();
+  } catch(e) { console.error(e); setSyncDot('err'); }
 }
 
 function showUndoToast(desc) {
@@ -817,10 +795,7 @@ function showUndoToast(desc) {
   document.getElementById('undo-toast').classList.add('show');
   undoTimer = setTimeout(hideUndoToast, 5000);
 }
-function hideUndoToast() {
-  clearTimeout(undoTimer);
-  document.getElementById('undo-toast').classList.remove('show');
-}
+function hideUndoToast() { clearTimeout(undoTimer); document.getElementById('undo-toast').classList.remove('show'); }
 
 // ── Settings ──
 function openSettings() {
@@ -832,24 +807,21 @@ function saveSettings() {
   const myRent  = parseFloat(document.getElementById('s-myrent').value);
   const rentDay = parseInt(document.getElementById('s-rentday').value);
   if (!myRent || !rentDay || rentDay < 1 || rentDay > 31) { alert('请填写有效的设置值'); return; }
-  cfg = { myRent, rentDay };
-  saveCfg(); render();
+  cfg = { myRent, rentDay }; saveCfg(); render();
   document.getElementById('set-overlay').classList.remove('open');
 }
 async function newCycle() {
   if (!confirm('确定要清空本期所有记录，开始新账期吗？')) return;
   setSyncDot('busy');
-  const { error } = await sb.from('expenses').delete().neq('id', 0);
-  if (error) { console.error(error); setSyncDot('err'); return; }
-  expenses = [];
-  setSyncDot('ok');
-  render();
-  document.getElementById('set-overlay').classList.remove('open');
+  try {
+    await dbDeleteAll();
+    expenses = []; setSyncDot('ok'); render();
+    document.getElementById('set-overlay').classList.remove('open');
+  } catch(e) { console.error(e); setSyncDot('err'); }
 }
 
 function overlayClick(e, id) {
-  if (e.target.classList.contains('overlay'))
-    document.getElementById(id).classList.remove('open');
+  if (e.target.classList.contains('overlay')) document.getElementById(id).classList.remove('open');
 }
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
