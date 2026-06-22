@@ -308,6 +308,43 @@
     .undo-toast.show { opacity: 1; pointer-events: all; transform: translateX(-50%) translateY(0); }
     .undo-text { flex: 1; }
     .undo-btn  { background: none; border: none; cursor: pointer; color: #4da1ff; font-size: 14px; font-weight: 700; font-family: inherit; padding: 0; white-space: nowrap; }
+
+    /* ── Cycle action (settings) ── */
+    .cycle-btn {
+      width: 100%; padding: 12px; background: rgba(0,122,255,0.1); color: var(--accent);
+      border: none; border-radius: 11px; font-size: 15px; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: background 0.15s;
+    }
+    .cycle-btn:hover { background: rgba(0,122,255,0.18); }
+    .cycle-hint { font-size: 12px; color: var(--sub); margin-top: 9px; line-height: 1.5; }
+
+    /* ── Left Drawer (往期记录) ── */
+    .drawer-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 400;
+      display: flex; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: all; }
+    .drawer {
+      background: var(--card); width: 84%; max-width: 360px; height: 100%;
+      transform: translateX(-100%);
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      display: flex; flex-direction: column; overflow-y: auto;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+    }
+    .drawer-overlay.open .drawer { transform: translateX(0); }
+    .drawer-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 18px 14px; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: var(--card); z-index: 1;
+    }
+    .drawer-title { font-size: 18px; font-weight: 700; }
+    .drawer-close { background: none; border: none; font-size: 17px; color: var(--sub); cursor: pointer; padding: 4px 8px; }
+    .cyc-item { padding: 15px 18px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+    .cyc-item:hover { background: var(--bg); }
+    .cyc-range { font-size: 15px; font-weight: 600; }
+    .cyc-meta  { font-size: 12px; color: var(--sub); margin-top: 5px; display: flex; justify-content: space-between; align-items: center; }
+    .cyc-transfer { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cyc-empty { padding: 48px 24px; text-align: center; color: var(--sub); font-size: 14px; line-height: 1.6; }
   </style>
 </head>
 <body>
@@ -330,8 +367,9 @@
     <div class="topbar-inner">
       <h1>家庭账单<span class="sync-dot ok" id="sync-dot"></span></h1>
       <div class="topbar-actions">
-        <button class="icon-btn" onclick="lockApp()">锁定</button>
+        <button class="icon-btn" onclick="openDrawer()">☰ 往期</button>
         <button class="icon-btn" onclick="openSettings()">设置</button>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
       </div>
     </div>
   </header>
@@ -345,6 +383,10 @@
         <div class="transfer-note" id="hero-note">AUD</div>
       </div>
       <div class="breakdown">
+        <div class="brow" id="b-carry-row" style="display:none">
+          <span class="lbl"><span class="bdot" style="background:var(--sub)"></span><span id="b-carry-lbl">上期结余</span></span>
+          <span class="val" id="b-carry">—</span>
+        </div>
         <div class="brow">
           <span class="lbl"><span class="bdot" style="background:var(--accent)"></span>我的租金份额</span>
           <span class="val neutral" id="b-rent">—</span>
@@ -429,9 +471,30 @@
     </div>
     <button class="submit" onclick="saveSettings()">保存</button>
     <div class="danger-zone">
-      <div class="danger-title">危险操作</div>
-      <button class="danger-btn" onclick="newCycle()">开始新账期（清空本期记录）</button>
+      <div class="danger-title">账期</div>
+      <button class="cycle-btn" onclick="newCycle()">归档本期，开始新账期</button>
+      <div class="cycle-hint">本期结余（应转/欠款）将自动滚入下一期冲抵。本期明细会完整保存到「往期记录」，不会被删除。</div>
     </div>
+  </div>
+</div>
+
+<!-- Left Drawer: 往期记录 -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="overlayClick2(event,'drawer-overlay')">
+  <div class="drawer">
+    <div class="drawer-head">
+      <span class="drawer-title">往期记录</span>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div id="drawer-body"></div>
+  </div>
+</div>
+
+<!-- History Detail (read-only) -->
+<div class="overlay" id="hist-overlay" onclick="overlayClick(event,'hist-overlay')">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title" id="hist-title">账期详情</div>
+    <div id="hist-body"></div>
   </div>
 </div>
 
@@ -462,8 +525,9 @@ const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
 const KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
 const H   = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
 
-async function dbGet() {
-  const r = await fetch(`${API}/expenses?select=*&order=date.asc,id.asc`, { headers: H });
+async function dbGet(cycleId) {
+  const filter = cycleId != null ? `&cycle_id=eq.${cycleId}` : '';
+  const r = await fetch(`${API}/expenses?select=*${filter}&order=date.asc,id.asc`, { headers: H });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -488,9 +552,33 @@ async function dbDelete(id) {
   const r = await fetch(`${API}/expenses?id=eq.${id}`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
 }
-async function dbDeleteAll() {
-  const r = await fetch(`${API}/expenses?id=gt.0`, { method: 'DELETE', headers: H });
+
+// ── Cycles ──
+async function dbGetActiveCycle() {
+  const r = await fetch(`${API}/cycles?status=eq.active&order=id.desc&limit=1`, { headers: H });
   if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0] || null;
+}
+async function dbGetArchivedCycles() {
+  const r = await fetch(`${API}/cycles?status=eq.archived&order=id.desc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function dbInsertCycle(row) {
+  const r = await fetch(`${API}/cycles`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify([row]),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0];
+}
+async function dbUpdateCycle(id, row) {
+  const r = await fetch(`${API}/cycles?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(row),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
 // ── Password ──
@@ -552,6 +640,7 @@ const SEED = [
 
 // ── State ──
 let expenses     = [];
+let activeCycle  = null;   // 当前活跃账期 { id, label, start_date, carryover, ... }
 let cfg          = { myRent: 1250, rentDay: 22 };
 let editingId    = null;
 let pendingDelId = null;
@@ -559,7 +648,7 @@ let pendingDelRow = null;
 let undoTimer    = null;
 
 const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
-const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type });
+const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type, cycle_id: activeCycle ? activeCycle.id : null });
 
 // ── Sync dot ──
 function setSyncDot(s) {
@@ -587,11 +676,15 @@ function showLoading(on) {
 async function loadExpenses() {
   setSyncDot('busy');
   try {
-    const data = await dbGet();
-    if (data.length === 0) {
-      const inserted = await dbInsert(SEED);
+    activeCycle = await dbGetActiveCycle();
+    if (!activeCycle) {
+      // 全新数据库：引导建立首期账期并写入种子数据
+      activeCycle = await dbInsertCycle({ label: '首期账单', start_date: SEED[0].date, status: 'active', carryover: 0 });
+      const seeded = SEED.map(s => ({ ...s, cycle_id: activeCycle.id }));
+      const inserted = await dbInsert(seeded);
       expenses = inserted.map(toLocal);
     } else {
+      const data = await dbGet(activeCycle.id);
       expenses = data.map(toLocal);
     }
     setSyncDot('ok');
@@ -602,14 +695,19 @@ async function loadExpenses() {
   }
 }
 
-// Poll every 30s — only re-render if data changed
+// Poll every 30s — follow the active cycle, only re-render on change
 function startPolling() {
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
     try {
-      const data = await dbGet();
+      const ac = await dbGetActiveCycle();
+      if (!ac) { setSyncDot('err'); return; }
+      const cycleChanged = !activeCycle || ac.id !== activeCycle.id
+        || parseFloat(ac.carryover || 0) !== parseFloat(activeCycle.carryover || 0);
+      activeCycle = ac;
+      const data = await dbGet(ac.id);
       const sig = d => d.map(r => `${r.id}:${r.amount}:${r.description}:${r.type}:${r.date}`).join('|');
-      if (sig(data) !== sig(expenses.map(toDB))) {
+      if (cycleChanged || sig(data) !== sig(expenses.map(toDB))) {
         expenses = data.map(toLocal);
         render();
       }
@@ -633,7 +731,8 @@ function calc() {
     else if (e.type === 'partner_personal') pp     += e.amount;
     else if (e.type === 'partner_paid')     cp     += e.amount;
   });
-  return { shared, pp, cp, transfer: cfg.myRent - shared / 2 - pp + cp };
+  const carryover = activeCycle ? parseFloat(activeCycle.carryover || 0) : 0;
+  return { shared, pp, cp, carryover, transfer: carryover + cfg.myRent - shared / 2 - pp + cp };
 }
 
 // ── Format ──
@@ -647,7 +746,7 @@ function fmtDate(ds) {
 
 // ── Render ──
 function renderSummary() {
-  const { shared, pp, cp, transfer } = calc();
+  const { shared, pp, cp, carryover, transfer } = calc();
   const recv = transfer < 0;
   document.getElementById('hero').className          = 'transfer-hero ' + (recv ? 'receive' : 'pay');
   document.getElementById('hero-amount').className   = 'transfer-big '  + (recv ? 'receive' : 'pay');
@@ -655,6 +754,16 @@ function renderSummary() {
   document.getElementById('hero-num').textContent    = fmt(transfer);
   document.getElementById('hero-note').textContent   = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
   document.getElementById('cycle-label').textContent = `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
+  const carryRow = document.getElementById('b-carry-row');
+  if (Math.abs(carryover) >= 0.005) {
+    carryRow.style.display = 'flex';
+    document.getElementById('b-carry-lbl').textContent = carryover < 0 ? '上期宝宝欠你（抵减）' : '上期你欠宝宝（累加）';
+    const cv = document.getElementById('b-carry');
+    cv.textContent = (carryover < 0 ? '-$' : '+$') + fmt(carryover);
+    cv.className   = 'val ' + (carryover < 0 ? 'positive' : 'negative');
+  } else {
+    carryRow.style.display = 'none';
+  }
   document.getElementById('b-rent').textContent          = `$${fmt(cfg.myRent)}`;
   document.getElementById('b-shared-total').textContent  = `$${fmt(shared)}`;
   document.getElementById('b-shared-half').textContent   = `-$${fmt(shared / 2)}`;
@@ -662,25 +771,20 @@ function renderSummary() {
   document.getElementById('b-covered').textContent       = cp > 0 ? `+$${fmt(cp)}` : '$0.00';
 }
 
-function renderList() {
-  const listEl  = document.getElementById('list');
-  const emptyEl = document.getElementById('empty');
-  if (expenses.length === 0) { listEl.innerHTML = ''; emptyEl.style.display = 'block'; return; }
-  emptyEl.style.display = 'none';
-  const map = {};
-  expenses.forEach(e => { (map[e.date] = map[e.date] || []).push(e); });
-  const dates = Object.keys(map).sort((a,b) => b < a ? -1 : 1);
-  const TYPE = {
-    shared:           { dot:'var(--green)',  tag:'共同分担'   },
-    partner_personal: { dot:'var(--orange)', tag:'替宝宝垫付' },
-    partner_paid:     { dot:'var(--red)',    tag:'宝宝替我垫' },
-  };
-  listEl.innerHTML = dates.map(date => {
-    const rows = map[date].map(e => {
-      const t = TYPE[e.type];
-      const amtTxt   = e.type === 'partner_paid' ? `−$${fmt(e.amount)}` : `$${fmt(e.amount)}`;
-      const shareTxt = e.type === 'shared' ? `各付 $${fmt(e.amount/2)}` : e.type === 'partner_personal' ? '全额抵扣' : '全额增加';
-      return `<div class="item">
+const TYPE_META = {
+  shared:           { dot:'var(--green)',  tag:'共同分担'   },
+  partner_personal: { dot:'var(--orange)', tag:'替宝宝垫付' },
+  partner_paid:     { dot:'var(--red)',    tag:'宝宝替我垫' },
+};
+function itemRowHtml(e, readonly) {
+  const t = TYPE_META[e.type];
+  const amtTxt   = e.type === 'partner_paid' ? `−$${fmt(e.amount)}` : `$${fmt(e.amount)}`;
+  const shareTxt = e.type === 'shared' ? `各付 $${fmt(e.amount/2)}` : e.type === 'partner_personal' ? '全额抵扣' : '全额增加';
+  const actions  = readonly ? '' : `<div class="item-actions">
+          <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
+          <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
+        </div>`;
+  return `<div class="item">
         <span class="item-dot" style="background:${t.dot}"></span>
         <div class="item-body">
           <div class="item-desc">${escHtml(e.desc)}</div>
@@ -689,15 +793,24 @@ function renderList() {
         <div class="item-right">
           <div class="item-amount">${amtTxt}</div>
           <div class="item-share">${shareTxt}</div>
-        </div>
-        <div class="item-actions">
-          <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
-          <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
-        </div>
+        </div>${actions}
       </div>`;
-    }).join('');
-    return `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${rows}</div></div>`;
-  }).join('');
+}
+function groupedListHtml(exps, readonly) {
+  const map = {};
+  exps.forEach(e => { (map[e.date] = map[e.date] || []).push(e); });
+  const dates = Object.keys(map).sort((a,b) => b < a ? -1 : 1);
+  return dates.map(date =>
+    `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${map[date].map(e => itemRowHtml(e, readonly)).join('')}</div></div>`
+  ).join('');
+}
+
+function renderList() {
+  const listEl  = document.getElementById('list');
+  const emptyEl = document.getElementById('empty');
+  if (expenses.length === 0) { listEl.innerHTML = ''; emptyEl.style.display = 'block'; return; }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = groupedListHtml(expenses, false);
 }
 
 function render() { renderSummary(); renderList(); }
@@ -744,7 +857,7 @@ async function submitExpense() {
       if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
     } else {
       const newId = Date.now();
-      await dbInsert({ id: newId, date, amount, description: desc, type });
+      await dbInsert({ id: newId, date, amount, description: desc, type, cycle_id: activeCycle ? activeCycle.id : null });
       expenses.push({ id: newId, date, amount, desc, type });
     }
     setSyncDot('ok'); render(); closeAdd();
@@ -811,17 +924,114 @@ function saveSettings() {
   document.getElementById('set-overlay').classList.remove('open');
 }
 async function newCycle() {
-  if (!confirm('确定要清空本期所有记录，开始新账期吗？')) return;
+  if (!activeCycle) { alert('账期尚未初始化，请刷新页面重试'); return; }
+  const { transfer } = calc();
+  const recv = transfer < 0;
+  const msg = recv
+    ? `本期结算：宝宝欠你 $${fmt(transfer)}。\n归档后这笔金额会滚入新账期，下期你少转这么多。\n本期 ${expenses.length} 笔明细将保存到「往期记录」。确定吗？`
+    : `本期结算：你应转给宝宝 $${fmt(transfer)}。\n归档后这笔金额会滚入新账期。\n本期 ${expenses.length} 笔明细将保存到「往期记录」。确定吗？`;
+  if (!confirm(msg)) return;
   setSyncDot('busy');
   try {
-    await dbDeleteAll();
-    expenses = []; setSyncDot('ok'); render();
+    const today = new Date().toISOString().split('T')[0];
+    await dbUpdateCycle(activeCycle.id, { status: 'archived', end_date: today, transfer });
+    activeCycle = await dbInsertCycle({ label: cycleLabel(today), start_date: today, status: 'active', carryover: transfer });
+    expenses = [];
+    setSyncDot('ok'); render();
     document.getElementById('set-overlay').classList.remove('open');
   } catch(e) { console.error(e); setSyncDot('err'); }
 }
 
+function cycleLabel(startDate) {
+  const d = new Date(startDate + 'T12:00:00');
+  return `${d.getMonth() + 1}月账期`;
+}
+function fmtShort(ds) {
+  if (!ds) return '';
+  const d = new Date(ds + 'T12:00:00');
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+function cycRange(c) {
+  return `${fmtShort(c.start_date) || '—'} – ${c.end_date ? fmtShort(c.end_date) : '至今'}`;
+}
+
+// ── 往期记录 抽屉 ──
+async function openDrawer() {
+  document.getElementById('drawer-overlay').classList.add('open');
+  const body = document.getElementById('drawer-body');
+  body.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
+  try {
+    const cycles = await dbGetArchivedCycles();
+    if (!cycles.length) {
+      body.innerHTML = '<div class="cyc-empty">暂无往期账单<br>归档当前账期后<br>历史记录会出现在这里</div>';
+      return;
+    }
+    body.innerHTML = cycles.map(c => {
+      const t = parseFloat(c.transfer || 0);
+      const recv = t < 0;
+      const tTxt = (recv ? '宝宝还 ' : '应转 ') + '$' + fmt(t);
+      return `<div class="cyc-item" onclick="openHistory(${c.id})">
+        <div class="cyc-range">${cycRange(c)}</div>
+        <div class="cyc-meta">
+          <span>${escHtml(c.label || '')}</span>
+          <span class="cyc-transfer" style="color:${recv ? 'var(--green)' : 'var(--accent)'}">${tTxt}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error(e); body.innerHTML = '<div class="cyc-empty">加载失败，请重试</div>'; }
+}
+function closeDrawer() { document.getElementById('drawer-overlay').classList.remove('open'); }
+
+// ── 历史账期详情（只读）──
+async function openHistory(cycleId) {
+  document.getElementById('hist-overlay').classList.add('open');
+  const body = document.getElementById('hist-body');
+  body.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
+  try {
+    const [rows, cycles] = await Promise.all([ dbGet(cycleId), dbGetArchivedCycles() ]);
+    const cyc  = cycles.find(c => c.id === cycleId);
+    const exps = rows.map(toLocal);
+    document.getElementById('hist-title').textContent = cyc ? cycRange(cyc) : '账期详情';
+    body.innerHTML = historySummaryHtml(cyc, exps) +
+      (exps.length ? groupedListHtml(exps, true) : '<div class="cyc-empty">本期无开支记录</div>');
+  } catch(e) { console.error(e); body.innerHTML = '<div class="cyc-empty">加载失败，请重试</div>'; }
+}
+function historySummaryHtml(cyc, exps) {
+  let shared = 0, pp = 0, cp = 0;
+  exps.forEach(e => {
+    if      (e.type === 'shared')           shared += e.amount;
+    else if (e.type === 'partner_personal') pp     += e.amount;
+    else if (e.type === 'partner_paid')     cp     += e.amount;
+  });
+  const carry    = cyc ? parseFloat(cyc.carryover || 0) : 0;
+  const transfer = cyc && cyc.transfer != null ? parseFloat(cyc.transfer) : (carry + cfg.myRent - shared/2 - pp + cp);
+  const rentUsed = transfer - carry + shared/2 + pp - cp;   // 还原归档时的租金份额，保证明细与结算额自洽
+  const recv = transfer < 0;
+  const carryRow = Math.abs(carry) >= 0.005
+    ? `<div class="brow"><span class="lbl"><span class="bdot" style="background:var(--sub)"></span>${carry < 0 ? '上期宝宝欠你（抵减）' : '上期你欠宝宝（累加）'}</span><span class="val ${carry < 0 ? 'positive' : 'negative'}">${carry < 0 ? '-$' : '+$'}${fmt(carry)}</span></div>`
+    : '';
+  return `<div class="summary" style="margin:0 0 14px">
+    <div class="transfer-hero ${recv ? 'receive' : 'pay'}">
+      <div class="transfer-label">${recv ? '宝宝需还给你' : '当期应转给宝宝'}</div>
+      <div class="transfer-big ${recv ? 'receive' : 'pay'}"><span class="sym">$</span>${fmt(transfer)}</div>
+      <div class="transfer-note">AUD · 已结算</div>
+    </div>
+    <div class="breakdown">
+      ${carryRow}
+      <div class="brow"><span class="lbl"><span class="bdot" style="background:var(--accent)"></span>我的租金份额</span><span class="val neutral">$${fmt(rentUsed)}</span></div>
+      <div class="brow"><span class="lbl"><span class="bdot" style="background:var(--green)"></span>共同开支（全额）</span><span class="val neutral">$${fmt(shared)}</span></div>
+      <div class="brow" style="padding-left:15px"><span class="lbl">└ 其中抵扣（÷2）</span><span class="val positive">-$${fmt(shared/2)}</span></div>
+      <div class="brow"><span class="lbl"><span class="bdot" style="background:var(--orange)"></span>替宝宝垫付（全额抵扣）</span><span class="val positive">${pp > 0 ? '-$' + fmt(pp) : '$0.00'}</span></div>
+      <div class="brow"><span class="lbl"><span class="bdot" style="background:var(--red)"></span>宝宝替我垫付</span><span class="val negative">${cp > 0 ? '+$' + fmt(cp) : '$0.00'}</span></div>
+    </div>
+  </div>`;
+}
+
 function overlayClick(e, id) {
   if (e.target.classList.contains('overlay')) document.getElementById(id).classList.remove('open');
+}
+function overlayClick2(e, id) {
+  if (e.target.classList.contains('drawer-overlay')) document.getElementById(id).classList.remove('open');
 }
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
