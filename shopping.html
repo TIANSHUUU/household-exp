@@ -440,7 +440,7 @@ function startPolling() {
       if (sig(fresh) !== sig(lists)) { lists = fresh; render(); }
       setSyncDot('ok');
     } catch(e) { setSyncDot('err'); }
-  }, 30000);
+  }, 15000);
 }
 function sig(ls) {
   return ls.map(l => `${l.id}:${l.name}[${l.items.map(i => i.id + (i.checked ? 1 : 0) + i.name).join(',')}]`).join('|');
