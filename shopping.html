@@ -136,7 +136,11 @@
     }
     .list-name { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; min-width: 0; }
     .list-name .emoji { flex-shrink: 0; }
-    .list-name .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-name .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
+    .edit-list-input {
+      width: 100%; padding: 4px 8px; border: 1.5px solid var(--accent); border-radius: 8px;
+      font-size: 17px; font-weight: 700; font-family: inherit; background: var(--card); color: var(--text); outline: none;
+    }
     .list-count { font-size: 12px; color: var(--sub); font-weight: 500; flex-shrink: 0; }
     .done-btn {
       flex-shrink: 0; background: rgba(52,199,89,0.12); color: var(--green); border: none;
@@ -321,6 +325,13 @@ async function slInsertList(name) {
   if (!r.ok) throw new Error(await r.text());
   return (await r.json())[0];
 }
+async function slUpdate(id, name) {
+  const r = await fetch(`${API}/shopping_lists?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
 async function slDeleteList(id) {
   let r = await fetch(`${API}/shopping_items?list_id=eq.${id}`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
@@ -445,7 +456,7 @@ function startPolling() {
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
     const ae = document.activeElement;
-    if (ae && (ae.classList.contains('add-item-input') || ae.classList.contains('edit-item-input') || ae.id === 'nl-name')) return;
+    if (ae && (ae.classList.contains('add-item-input') || ae.classList.contains('edit-item-input') || ae.classList.contains('edit-list-input') || ae.id === 'nl-name')) return;
     try {
       const fresh = await loadAll();
       if (sig(fresh) !== sig(lists)) { lists = fresh; render(); }
@@ -475,7 +486,7 @@ function listCardHtml(l) {
       </div>`).join('');
   return `<div class="list-card">
     <div class="list-head">
-      <div class="list-name"><span class="emoji">🛒</span><span class="txt">${escHtml(l.name)}</span><span class="list-count">${remaining}/${l.items.length}</span></div>
+      <div class="list-name"><span class="emoji">🛒</span><span class="txt" id="lname-${l.id}" onclick="startEditList(${l.id})">${escHtml(l.name)}</span><span class="list-count">${remaining}/${l.items.length}</span></div>
       <button class="done-btn" onclick="doneList(${l.id})">✓ 采购完毕</button>
     </div>
     ${items}
@@ -562,6 +573,27 @@ async function commitEditItem(listId, itemId, inp) {
   render();
   setSyncDot('busy');
   try { await siUpdate(itemId, name); setSyncDot('ok'); }
+  catch(e) { console.error(e); setSyncDot('err'); }
+}
+function startEditList(listId) {
+  const el = document.getElementById('lname-' + listId);
+  if (!el || el.querySelector('input')) return;
+  const cur = lists.find(l => l.id === listId).name;
+  el.innerHTML = `<input class="edit-list-input" value="${escHtml(cur)}"
+    onkeydown="if(event.key==='Enter'){this.blur()}else if(event.key==='Escape'){this.dataset.cancel='1';this.blur()}"
+    onblur="commitEditList(${listId},this)">`;
+  const inp = el.querySelector('input');
+  inp.focus();
+  inp.setSelectionRange(cur.length, cur.length);
+}
+async function commitEditList(listId, inp) {
+  const l = lists.find(x => x.id === listId);
+  const name = inp.value.trim();
+  if (inp.dataset.cancel === '1' || !name || name === l.name) { render(); return; }
+  l.name = name;
+  render();
+  setSyncDot('busy');
+  try { await slUpdate(listId, name); setSyncDot('ok'); }
   catch(e) { console.error(e); setSyncDot('err'); }
 }
 async function doneList(listId) {
