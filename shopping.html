@@ -153,8 +153,12 @@
       transition: background 0.15s, border-color 0.15s; color: #fff; font-size: 13px; font-weight: 700;
     }
     .check.on { background: var(--green); border-color: var(--green); }
-    .sitem-name { flex: 1; font-size: 15px; min-width: 0; word-break: break-word; transition: color 0.15s; }
+    .sitem-name { flex: 1; font-size: 15px; min-width: 0; word-break: break-word; transition: color 0.15s; cursor: text; }
     .sitem.checked .sitem-name { text-decoration: line-through; color: var(--sub); }
+    .edit-item-input {
+      width: 100%; padding: 4px 8px; border: 1.5px solid var(--accent); border-radius: 8px;
+      font-size: 15px; font-family: inherit; background: var(--card); color: var(--text); outline: none;
+    }
     .sdel {
       background: none; border: none; cursor: pointer; color: var(--sub);
       font-size: 20px; line-height: 1; padding: 4px 6px; border-radius: 6px;
@@ -346,6 +350,13 @@ async function siToggle(id, checked) {
   });
   if (!r.ok) throw new Error(await r.text());
 }
+async function siUpdate(id, name) {
+  const r = await fetch(`${API}/shopping_items?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
 async function siDeleteItem(id) {
   const r = await fetch(`${API}/shopping_items?id=eq.${id}`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
@@ -434,7 +445,7 @@ function startPolling() {
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
     const ae = document.activeElement;
-    if (ae && (ae.classList.contains('add-item-input') || ae.id === 'nl-name')) return;
+    if (ae && (ae.classList.contains('add-item-input') || ae.classList.contains('edit-item-input') || ae.id === 'nl-name')) return;
     try {
       const fresh = await loadAll();
       if (sig(fresh) !== sig(lists)) { lists = fresh; render(); }
@@ -459,7 +470,7 @@ function listCardHtml(l) {
   const items = l.items.map(it => `
       <div class="sitem ${it.checked ? 'checked' : ''}">
         <div class="check ${it.checked ? 'on' : ''}" onclick="toggleItem(${l.id},${it.id})">${it.checked ? '✓' : ''}</div>
-        <div class="sitem-name">${escHtml(it.name)}</div>
+        <div class="sitem-name" id="name-${l.id}-${it.id}" onclick="startEditItem(${l.id},${it.id})">${escHtml(it.name)}</div>
         <button class="sdel" onclick="deleteItem(${l.id},${it.id})" title="删除">×</button>
       </div>`).join('');
   return `<div class="list-card">
@@ -529,6 +540,28 @@ async function deleteItem(listId, itemId) {
   render();
   setSyncDot('busy');
   try { await siDeleteItem(itemId); setSyncDot('ok'); }
+  catch(e) { console.error(e); setSyncDot('err'); }
+}
+function startEditItem(listId, itemId) {
+  const el = document.getElementById(`name-${listId}-${itemId}`);
+  if (!el || el.querySelector('input')) return;
+  const it  = lists.find(l => l.id === listId).items.find(i => i.id === itemId);
+  const cur = it.name;
+  el.innerHTML = `<input class="edit-item-input" value="${escHtml(cur)}"
+    onkeydown="if(event.key==='Enter'){this.blur()}else if(event.key==='Escape'){this.dataset.cancel='1';this.blur()}"
+    onblur="commitEditItem(${listId},${itemId},this)">`;
+  const inp = el.querySelector('input');
+  inp.focus();
+  inp.setSelectionRange(cur.length, cur.length);
+}
+async function commitEditItem(listId, itemId, inp) {
+  const it = lists.find(l => l.id === listId).items.find(i => i.id === itemId);
+  const name = inp.value.trim();
+  if (inp.dataset.cancel === '1' || !name || name === it.name) { render(); return; }
+  it.name = name;
+  render();
+  setSyncDot('busy');
+  try { await siUpdate(itemId, name); setSyncDot('ok'); }
   catch(e) { console.error(e); setSyncDot('err'); }
 }
 async function doneList(listId) {
