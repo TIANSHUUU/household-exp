@@ -484,9 +484,13 @@ function render() {
   empty.style.display = 'none';
   wrap.innerHTML = lists.map(listCardHtml).join('');
 }
+function displayItems(l) {
+  // unchecked first, checked sink to bottom; within each group keep position order
+  return [...l.items].sort((a, b) => (a.checked - b.checked) || (a.position - b.position));
+}
 function listCardHtml(l) {
   const remaining = l.items.filter(i => !i.checked).length;
-  const items = l.items.map(it => `
+  const items = displayItems(l).map(it => `
       <div class="sitem ${it.checked ? 'checked' : ''}" draggable="false"
            ondragstart="dragStart(event,${l.id},${it.id})" ondragover="dragOver(event,${l.id})"
            ondragleave="dragLeave(event)" ondrop="dropItem(event,${l.id},${it.id})" ondragend="dragEnd(event)">
@@ -654,18 +658,26 @@ async function dropItem(e, listId, targetId) {
   const after = row.classList.contains('drop-after');
   row.classList.remove('drop-before', 'drop-after');
   if (!dragCtx || dragCtx.listId !== listId || dragCtx.itemId === targetId) return;
-  const dragId = dragCtx.itemId;
-  const list   = lists.find(l => l.id === listId);
-  const without = list.items.filter(i => i.id !== dragId);
-  const tIdx   = without.findIndex(i => i.id === targetId);
-  const insertIdx = after ? tIdx + 1 : tIdx;
-  const prev = without[insertIdx - 1];
-  const next = without[insertIdx];
-  let newPos;
-  if      (!prev) newPos = next.position - 1;
-  else if (!next) newPos = prev.position + 1;
-  else            newPos = (prev.position + next.position) / 2;
+  const dragId   = dragCtx.itemId;
+  const list     = lists.find(l => l.id === listId);
   const dragItem = list.items.find(i => i.id === dragId);
+  const target   = list.items.find(i => i.id === targetId);
+  // reorder only within the same checked-group (checked items sit at the bottom)
+  const group = displayItems(list).filter(i => i.checked === dragItem.checked && i.id !== dragId);
+  let insertIdx;
+  if (target.checked === dragItem.checked) {
+    const tIdx = group.findIndex(i => i.id === targetId);
+    insertIdx = after ? tIdx + 1 : tIdx;
+  } else {
+    insertIdx = dragItem.checked ? 0 : group.length;   // dropped across the boundary → near edge of own group
+  }
+  const prev = group[insertIdx - 1];
+  const next = group[insertIdx];
+  let newPos;
+  if      (!prev && !next) newPos = dragItem.position;
+  else if (!prev)          newPos = next.position - 1;
+  else if (!next)          newPos = prev.position + 1;
+  else                     newPos = (prev.position + next.position) / 2;
   dragItem.position = newPos;
   list.items.sort((a, b) => (a.position - b.position) || (a.id - b.id));
   render();
