@@ -242,6 +242,13 @@
     }
     .submit:active   { opacity: 0.8; }
     .submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    .finish-clear-btn {
+      width: 100%; padding: 13px; margin-top: 10px; background: rgba(255,59,48,0.1); color: var(--red);
+      border: none; border-radius: 13px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .finish-clear-btn:hover { background: rgba(255,59,48,0.18); }
+    .finish-desc { font-size: 14px; color: var(--sub); margin-bottom: 18px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -296,6 +303,17 @@
              onkeydown="if(event.key==='Enter')submitNewList()">
     </div>
     <button class="submit" onclick="submitNewList()">创建</button>
+  </div>
+</div>
+
+<!-- Finish List Sheet -->
+<div class="overlay" id="finish-overlay" onclick="overlayClick(event,'finish-overlay')">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title" id="finish-title">采购完毕</div>
+    <div class="finish-desc" id="finish-desc"></div>
+    <button class="submit" id="finish-keep-btn" style="background:var(--green)" onclick="finishKeepUnbought()">保留未买、清除已买</button>
+    <button class="finish-clear-btn" onclick="finishClearAll()">全部清除整张清单</button>
   </div>
 </div>
 
@@ -375,6 +393,11 @@ const siToggle = (id, checked) => siPatch(id, { checked });
 const siUpdate = (id, name)    => siPatch(id, { name });
 async function siDeleteItem(id) {
   const r = await fetch(`${API}/shopping_items?id=eq.${id}`, { method: 'DELETE', headers: H });
+  if (!r.ok) throw new Error(await r.text());
+}
+async function siDeleteItems(ids) {
+  if (!ids.length) return;
+  const r = await fetch(`${API}/shopping_items?id=in.(${ids.join(',')})`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
 }
 
@@ -615,9 +638,48 @@ async function commitEditList(listId, inp) {
   try { await slUpdate(listId, name); setSyncDot('ok'); }
   catch(e) { console.error(e); setSyncDot('err'); }
 }
-async function doneList(listId) {
-  const list = lists.find(l => l.id === listId);
-  if (!confirm(`「${list.name}」采购完毕？\n整张清单将被清除（不存档）。`)) return;
+let finishingListId = null;
+function doneList(listId) {
+  finishingListId = listId;
+  const list   = lists.find(l => l.id === listId);
+  const bought = list.items.filter(i => i.checked).length;
+  const left   = list.items.length - bought;
+  document.getElementById('finish-title').textContent = `「${list.name}」采购完毕`;
+  const keepBtn = document.getElementById('finish-keep-btn');
+  const desc    = document.getElementById('finish-desc');
+  if (left > 0) {
+    keepBtn.style.display = 'block';
+    keepBtn.textContent = `保留未买的 ${left} 项，清除已买 ${bought} 项`;
+    desc.textContent = `没买到的 ${left} 项会留在清单里，下次继续采购。`;
+  } else {
+    keepBtn.style.display = 'none';
+    desc.textContent = '所有物品都已买到，可清除整张清单。';
+  }
+  document.getElementById('finish-overlay').classList.add('open');
+}
+function closeFinish() {
+  document.getElementById('finish-overlay').classList.remove('open');
+  finishingListId = null;
+}
+async function finishKeepUnbought() {
+  const listId = finishingListId;
+  const list   = lists.find(l => l.id === listId);
+  if (!list) { closeFinish(); return; }
+  const checkedIds = list.items.filter(i => i.checked).map(i => i.id);
+  closeFinish();
+  if (!checkedIds.length) return;
+  setSyncDot('busy');
+  try {
+    await siDeleteItems(checkedIds);
+    list.items = list.items.filter(i => !i.checked);
+    render();
+    setSyncDot('ok');
+  } catch(e) { console.error(e); setSyncDot('err'); }
+}
+async function finishClearAll() {
+  const listId = finishingListId;
+  closeFinish();
+  if (listId == null) return;
   setSyncDot('busy');
   try {
     await slDeleteList(listId);
