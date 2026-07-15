@@ -142,6 +142,13 @@
       font-size: 17px; font-weight: 700; font-family: inherit; background: var(--card); color: var(--text); outline: none;
     }
     .list-count { font-size: 12px; color: var(--sub); font-weight: 500; flex-shrink: 0; }
+    .list-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .copy-btn {
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      font-size: 13px; font-weight: 600; font-family: inherit; padding: 7px 9px;
+      border-radius: 9px; white-space: nowrap; transition: background 0.15s, color 0.15s;
+    }
+    .copy-btn:hover { background: rgba(0,122,255,0.1); color: var(--accent); }
     .done-btn {
       flex-shrink: 0; background: rgba(52,199,89,0.12); color: var(--green); border: none;
       border-radius: 9px; padding: 7px 12px; font-size: 13px; font-weight: 600;
@@ -382,6 +389,14 @@ async function siInsertItems(listId, names) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+async function siInsertRows(rows) {
+  const r = await fetch(`${API}/shopping_items`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(rows),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
 async function siPatch(id, patch) {
   const r = await fetch(`${API}/shopping_items?id=eq.${id}`, {
     method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
@@ -526,7 +541,10 @@ function listCardHtml(l) {
   return `<div class="list-card">
     <div class="list-head">
       <div class="list-name"><span class="emoji">🛒</span><span class="txt" id="lname-${l.id}" onclick="startEditList(${l.id})">${escHtml(l.name)}</span><span class="list-count">${remaining}/${l.items.length}</span></div>
-      <button class="done-btn" onclick="doneList(${l.id})">✓ 采购完毕</button>
+      <div class="list-actions">
+        <button class="copy-btn" onclick="copyList(${l.id})" title="复制这张清单">⧉ 复制</button>
+        <button class="done-btn" onclick="doneList(${l.id})">✓ 采购完毕</button>
+      </div>
     </div>
     ${items}
     <div class="add-item-row">
@@ -556,6 +574,24 @@ async function submitNewList() {
     setSyncDot('ok');
     const ni = document.getElementById('add-input-' + Number(l.id));
     if (ni) ni.focus();
+  } catch(e) { console.error(e); setSyncDot('err'); }
+}
+
+async function copyList(listId) {
+  const src = lists.find(l => l.id === listId);
+  if (!src) return;
+  setSyncDot('busy');
+  try {
+    const newList = await slInsertList(src.name + ' 副本');
+    const ordered = src.items.slice().sort((a, b) => (a.position - b.position) || (a.id - b.id));
+    const rows = ordered.map((it, idx) => ({ list_id: newList.id, name: it.name, checked: false, position: idx }));
+    const inserted = rows.length ? await siInsertRows(rows) : [];
+    const items = inserted.map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked,
+                                       position: r.position == null ? Number(r.id) : Number(r.position) }))
+                          .sort((a, b) => (a.position - b.position) || (a.id - b.id));
+    lists.push({ id: Number(newList.id), name: newList.name, items });
+    render();
+    setSyncDot('ok');
   } catch(e) { console.error(e); setSyncDot('err'); }
 }
 
