@@ -151,6 +151,14 @@
 
     .sitem { display: flex; align-items: center; padding: 11px 14px; gap: 12px; }
     .sitem:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .grip {
+      flex-shrink: 0; cursor: grab; color: var(--sub); opacity: 0.35;
+      font-size: 16px; line-height: 1; user-select: none; touch-action: none;
+    }
+    .grip:active { cursor: grabbing; }
+    .sitem.dragging { opacity: 0.4; }
+    .sitem.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+    .sitem.drop-after  { box-shadow: inset 0 -2px 0 0 var(--accent); }
     .check {
       width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border);
       flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
@@ -314,7 +322,9 @@ async function loadAll() {
   return ls.map(l => ({
     id: Number(l.id), name: l.name,
     items: its.filter(i => Number(i.list_id) === Number(l.id))
-              .map(i => ({ id: Number(i.id), name: i.name, checked: !!i.checked })),
+              .map(i => ({ id: Number(i.id), name: i.name, checked: !!i.checked,
+                           position: i.position == null ? Number(i.id) : Number(i.position) }))
+              .sort((a, b) => (a.position - b.position) || (a.id - b.id)),
   }));
 }
 async function slInsertList(name) {
@@ -338,10 +348,10 @@ async function slDeleteList(id) {
   r = await fetch(`${API}/shopping_lists?id=eq.${id}`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
 }
-async function siInsertItem(listId, name) {
+async function siInsertItem(listId, name, position) {
   const r = await fetch(`${API}/shopping_items`, {
     method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
-    body: JSON.stringify([{ list_id: listId, name }]),
+    body: JSON.stringify([{ list_id: listId, name, position }]),
   });
   if (!r.ok) throw new Error(await r.text());
   return (await r.json())[0];
@@ -349,25 +359,20 @@ async function siInsertItem(listId, name) {
 async function siInsertItems(listId, names) {
   const r = await fetch(`${API}/shopping_items`, {
     method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
-    body: JSON.stringify(names.map(n => ({ list_id: listId, name: n }))),
+    body: JSON.stringify(names.map((n, idx) => ({ list_id: listId, name: n, position: idx }))),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function siToggle(id, checked) {
+async function siPatch(id, patch) {
   const r = await fetch(`${API}/shopping_items?id=eq.${id}`, {
     method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ checked }),
+    body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(await r.text());
 }
-async function siUpdate(id, name) {
-  const r = await fetch(`${API}/shopping_items?id=eq.${id}`, {
-    method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ name }),
-  });
-  if (!r.ok) throw new Error(await r.text());
-}
+const siToggle = (id, checked) => siPatch(id, { checked });
+const siUpdate = (id, name)    => siPatch(id, { name });
 async function siDeleteItem(id) {
   const r = await fetch(`${API}/shopping_items?id=eq.${id}`, { method: 'DELETE', headers: H });
   if (!r.ok) throw new Error(await r.text());
@@ -443,7 +448,10 @@ async function loadLists() {
     if (data.length === 0) {
       const l = await slInsertList(SEED_LIST);
       const inserted = await siInsertItems(l.id, SEED_ITEMS);
-      data = [{ id: Number(l.id), name: l.name, items: inserted.map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked })) }];
+      data = [{ id: Number(l.id), name: l.name, items: inserted
+        .map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked,
+                     position: r.position == null ? Number(r.id) : Number(r.position) }))
+        .sort((a, b) => (a.position - b.position) || (a.id - b.id)) }];
     }
     lists = data;
     setSyncDot('ok');
@@ -465,7 +473,7 @@ function startPolling() {
   }, 15000);
 }
 function sig(ls) {
-  return ls.map(l => `${l.id}:${l.name}[${l.items.map(i => i.id + (i.checked ? 1 : 0) + i.name).join(',')}]`).join('|');
+  return ls.map(l => `${l.id}:${l.name}[${l.items.map(i => `${i.id}${i.checked ? 1 : 0}${i.name}:${i.position}`).join(',')}]`).join('|');
 }
 
 // ── Render ──
@@ -479,7 +487,11 @@ function render() {
 function listCardHtml(l) {
   const remaining = l.items.filter(i => !i.checked).length;
   const items = l.items.map(it => `
-      <div class="sitem ${it.checked ? 'checked' : ''}">
+      <div class="sitem ${it.checked ? 'checked' : ''}" draggable="false"
+           ondragstart="dragStart(event,${l.id},${it.id})" ondragover="dragOver(event,${l.id})"
+           ondragleave="dragLeave(event)" ondrop="dropItem(event,${l.id},${it.id})" ondragend="dragEnd(event)">
+        <span class="grip" title="拖动排序"
+              onmousedown="this.closest('.sitem').setAttribute('draggable','true')">⠿</span>
         <div class="check ${it.checked ? 'on' : ''}" onclick="toggleItem(${l.id},${it.id})">${it.checked ? '✓' : ''}</div>
         <div class="sitem-name" id="name-${l.id}-${it.id}" onclick="startEditItem(${l.id},${it.id})">${escHtml(it.name)}</div>
         <button class="sdel" onclick="deleteItem(${l.id},${it.id})" title="删除">×</button>
@@ -528,9 +540,11 @@ async function addItem(listId) {
   inp.disabled = true;
   setSyncDot('busy');
   try {
-    const row  = await siInsertItem(listId, name);
-    const list = lists.find(l => l.id === listId);
-    list.items.push({ id: Number(row.id), name: row.name, checked: !!row.checked });
+    const list   = lists.find(l => l.id === listId);
+    const nextPos = list.items.reduce((m, i) => Math.max(m, i.position), -1) + 1;
+    const row    = await siInsertItem(listId, name, nextPos);
+    list.items.push({ id: Number(row.id), name: row.name, checked: !!row.checked,
+                      position: row.position == null ? nextPos : Number(row.position) });
     setSyncDot('ok');
     render();
     const ni = document.getElementById('add-input-' + listId);
@@ -556,6 +570,7 @@ async function deleteItem(listId, itemId) {
 function startEditItem(listId, itemId) {
   const el = document.getElementById(`name-${listId}-${itemId}`);
   if (!el || el.querySelector('input')) return;
+  el.closest('.sitem').setAttribute('draggable', 'false');
   const it  = lists.find(l => l.id === listId).items.find(i => i.id === itemId);
   const cur = it.name;
   el.innerHTML = `<input class="edit-item-input" value="${escHtml(cur)}"
@@ -606,6 +621,57 @@ async function doneList(listId) {
     render();
     setSyncDot('ok');
   } catch(e) { console.error(e); setSyncDot('err'); }
+}
+
+// ── Drag to reorder (desktop) ──
+let dragCtx = null;
+function dragStart(e, listId, itemId) {
+  dragCtx = { listId, itemId };
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(itemId)); } catch (_) {}
+  e.currentTarget.classList.add('dragging');
+}
+function dragOver(e, listId) {
+  if (!dragCtx || dragCtx.listId !== listId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const row  = e.currentTarget;
+  const rect = row.getBoundingClientRect();
+  const after = (e.clientY - rect.top) > rect.height / 2;
+  row.classList.remove('drop-before', 'drop-after');
+  row.classList.add(after ? 'drop-after' : 'drop-before');
+}
+function dragLeave(e) { e.currentTarget.classList.remove('drop-before', 'drop-after'); }
+function dragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  e.currentTarget.setAttribute('draggable', 'false');
+  document.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  dragCtx = null;
+}
+async function dropItem(e, listId, targetId) {
+  e.preventDefault();
+  const row   = e.currentTarget;
+  const after = row.classList.contains('drop-after');
+  row.classList.remove('drop-before', 'drop-after');
+  if (!dragCtx || dragCtx.listId !== listId || dragCtx.itemId === targetId) return;
+  const dragId = dragCtx.itemId;
+  const list   = lists.find(l => l.id === listId);
+  const without = list.items.filter(i => i.id !== dragId);
+  const tIdx   = without.findIndex(i => i.id === targetId);
+  const insertIdx = after ? tIdx + 1 : tIdx;
+  const prev = without[insertIdx - 1];
+  const next = without[insertIdx];
+  let newPos;
+  if      (!prev) newPos = next.position - 1;
+  else if (!next) newPos = prev.position + 1;
+  else            newPos = (prev.position + next.position) / 2;
+  const dragItem = list.items.find(i => i.id === dragId);
+  dragItem.position = newPos;
+  list.items.sort((a, b) => (a.position - b.position) || (a.id - b.id));
+  render();
+  setSyncDot('busy');
+  try { await siPatch(dragId, { position: newPos }); setSyncDot('ok'); }
+  catch(err) { console.error(err); setSyncDot('err'); }
 }
 
 function overlayClick(e, id) {
