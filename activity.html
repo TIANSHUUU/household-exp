@@ -416,7 +416,12 @@ function escHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 function setSyncDot(s) { document.getElementById('sync-dot').className = 'sync-dot ' + s; }
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() {
+  const d = new Date();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mo}-${da}`;
+}
 function fmtDate(ds) {
   const d  = new Date(ds + 'T12:00:00');
   const mo = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -487,7 +492,7 @@ function itemRowHtml(a) {
   const meta = PERIOD_META[a.period];
   const parts = [];
   if (meta) parts.push(meta.label);
-  if (a.time) parts.push(a.time);
+  if (a.time) parts.push(escHtml(a.time));
   const timeTxt = parts.length ? parts.join(' · ') : '全天';
   const tag = a.note ? `${timeTxt} · ${escHtml(a.note)}` : timeTxt;
   const toggleBtn = a.status === 'proposed'
@@ -577,12 +582,13 @@ async function submitActivity() {
 async function toggleStatus(id) {
   const a = activities.find(x => x.id === id);
   if (!a) return;
+  const prevStatus = a.status;
   const next = a.status === 'proposed' ? 'confirmed' : 'proposed';
   a.status = next;
   render();
   setSyncDot('busy');
   try { await actUpdate(id, { status: next }); setSyncDot('ok'); }
-  catch(e) { console.error(e); setSyncDot('err'); }
+  catch(e) { console.error(e); setSyncDot('err'); a.status = prevStatus; render(); }
 }
 
 // ── Delete ──
