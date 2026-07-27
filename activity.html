@@ -143,7 +143,13 @@
 
     /* ── List ── */
     .date-group { margin-bottom: 14px; }
-    .date-label { font-size: 12px; font-weight: 600; color: var(--sub); padding: 0 4px 8px; letter-spacing: 0.2px; }
+    .date-label {
+      font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: 0.2px;
+      padding: 8px 12px; margin-bottom: 8px; border-radius: 10px;
+      background: rgba(0,122,255,0.08); border-left: 4px solid var(--accent);
+      display: flex; align-items: center; gap: 6px;
+    }
+    @media (prefers-color-scheme: dark) { .date-label { background: rgba(0,122,255,0.16); } }
     .items-card { background: var(--card); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
     .item { display: flex; align-items: center; padding: 11px 14px; gap: 11px; }
     .item:not(:last-child) { border-bottom: 1px solid var(--border); }
@@ -487,7 +493,7 @@ function groupedListHtml(list) {
   list.forEach(a => { (map[a.date] = map[a.date] || []).push(a); });
   const dates = Object.keys(map).sort();
   return dates.map(date =>
-    `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${map[date].map(itemRowHtml).join('')}</div></div>`
+    `<div class="date-group"><div class="date-label">🗓 ${fmtDate(date)}</div><div class="items-card">${map[date].map(itemRowHtml).join('')}</div></div>`
   ).join('');
 }
 
