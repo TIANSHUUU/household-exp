@@ -99,6 +99,10 @@
       transition: background 0.15s;
     }
     .icon-btn:hover { background: rgba(0,122,255,0.1); }
+    @media (max-width: 480px) {
+      .icon-btn { padding: 3px 4px; font-size: 12px; }
+      .topbar-actions { gap: 2px; }
+    }
     .sync-dot {
       display: inline-block; width: 7px; height: 7px; border-radius: 50%;
       margin-left: 6px; vertical-align: middle; transition: background 0.3s;
