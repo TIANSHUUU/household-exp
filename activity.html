@@ -91,8 +91,8 @@
       max-width: 600px; margin: 0 auto;
       display: flex; justify-content: space-between; align-items: center;
     }
-    .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
-    .topbar-actions { display: flex; gap: 8px; }
+    .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .topbar-actions { display: flex; gap: 8px; flex-shrink: 0; }
     .icon-btn {
       background: none; border: none; cursor: pointer; color: var(--accent);
       font-size: 14px; font-weight: 500; padding: 5px 10px; border-radius: 8px;
