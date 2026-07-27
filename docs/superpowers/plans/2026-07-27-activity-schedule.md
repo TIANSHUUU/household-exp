@@ -1,0 +1,873 @@
+# 活动安排页 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a third page, `activity.html`, where the user and their partner can log dated activities (with an optional coarse time-of-day and/or exact time), split into a "待定 (proposed)" and "已确认 (confirmed)" section, with either person able to move an activity between the two states.
+
+**Architecture:** Single static HTML file (`activity.html`) mirroring the existing `index.html` / `shopping.html` pattern — inline CSS reusing the shared iOS-style design tokens, inline JS talking directly to Supabase's REST API (no SDK), same password gate (`PWD_HASH` / `SESSION_KEY` reused so unlocking one page unlocks all three in the same tab), 15s polling for cross-device sync. One new Supabase table (`activities`).
+
+**Tech Stack:** Vanilla HTML/CSS/JS, Supabase (Postgres + PostgREST), no build step, no package manager.
+
+**Note on verification:** This project has no test framework, package manager, or CI (confirmed: no `package.json`, no test files, no CI config). The existing two pages were built and verified by hand in a browser. This plan follows that precedent — "tests" here are precise manual verification scripts (what to click, what to check in the DevTools console/network tab, and `curl` calls against the Supabase REST API to confirm server-side state) instead of automated test runs.
+
+---
+
+## Task 1: Create the `activities` table in Supabase
+
+**Files:** none (Supabase dashboard action)
+
+- [ ] **Step 1: Run the table-creation SQL**
+
+Open the Supabase project's SQL editor (project used by this app: `https://mpvsbeghuueffkjdemcr.supabase.co`) and run:
+
+```sql
+create table activities (
+  id bigint generated always as identity primary key,
+  title text not null,
+  date date not null,
+  period text,
+  time text,
+  note text,
+  status text not null default 'proposed',
+  created_at timestamptz default now()
+);
+alter table activities enable row level security;
+create policy "all activities" on activities for all using (true) with check (true);
+```
+
+- [ ] **Step 2: Verify the table exists and is reachable over REST**
+
+Run:
+
+```bash
+curl -s "https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/activities?select=*" \
+  -H "apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5" \
+  -H "Authorization: Bearer sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5"
+```
+
+Expected: `[]` (empty JSON array — table exists, RLS policy allows the anon key to read it, no rows yet).
+
+- [ ] **Step 3: Commit** — nothing to commit (this task only touches the Supabase project, not the repo). Skip.
+
+---
+
+## Task 2: Build `activity.html`
+
+**Files:**
+- Create: `activity.html`
+
+- [ ] **Step 1: Write the complete page**
+
+Create `activity.html` with this content:
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>活动安排</title>
+  <link rel="preconnect" href="https://mpvsbeghuueffkjdemcr.supabase.co">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f2f2f7; --card: #ffffff; --text: #1c1c1e; --sub: #6c6c70;
+      --border: #e5e5ea; --accent: #007aff; --green: #34c759;
+      --orange: #ff9500; --red: #ff3b30;
+      --shadow: 0 1px 8px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000; --card: #1c1c1e; --text: #ffffff; --sub: #8e8e93;
+        --border: #2c2c2e;
+        --shadow: 0 1px 8px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Lock ── */
+    #lock-screen {
+      position: fixed; inset: 0; background: var(--bg); z-index: 9999;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    #lock-screen.hidden { display: none; }
+    .lock-card {
+      background: var(--card); border-radius: 22px; padding: 36px 28px 28px;
+      width: 100%; max-width: 340px; box-shadow: var(--shadow); text-align: center;
+    }
+    .lock-icon  { font-size: 48px; margin-bottom: 14px; }
+    .lock-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .lock-sub   { font-size: 14px; color: var(--sub); margin-bottom: 26px; }
+    .lock-input {
+      width: 100%; padding: 14px 16px; border: 1.5px solid var(--border);
+      border-radius: 12px; font-size: 18px; font-family: inherit;
+      background: var(--bg); color: var(--text); text-align: center;
+      letter-spacing: 3px; outline: none; transition: border-color 0.2s; margin-bottom: 12px;
+    }
+    .lock-input:focus { border-color: var(--accent); }
+    .lock-input.error { border-color: var(--red); animation: shake 0.35s ease; }
+    @keyframes shake {
+      0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)}
+      40%{transform:translateX(8px)}   60%{transform:translateX(-5px)}
+      80%{transform:translateX(5px)}
+    }
+    .lock-error { font-size: 13px; color: var(--red); margin-bottom: 10px; min-height: 18px; }
+    .lock-btn {
+      width: 100%; padding: 14px; background: var(--accent); color: #fff;
+      border: none; border-radius: 12px; font-size: 16px; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: opacity 0.15s;
+    }
+    .lock-btn:active { opacity: 0.8; }
+
+    /* ── App ── */
+    #app { display: none; padding-bottom: 100px; }
+    #app.visible { display: block; }
+
+    /* ── Loading ── */
+    .loading-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 40px 20px; color: var(--sub); gap: 14px;
+    }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Topbar ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(242,242,247,0.85);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--border); padding: 14px 20px 12px;
+    }
+    @media (prefers-color-scheme: dark) { .topbar { background: rgba(0,0,0,0.85); } }
+    .topbar-inner {
+      max-width: 600px; margin: 0 auto;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    .topbar-actions { display: flex; gap: 8px; }
+    .icon-btn {
+      background: none; border: none; cursor: pointer; color: var(--accent);
+      font-size: 14px; font-weight: 500; padding: 5px 10px; border-radius: 8px;
+      transition: background 0.15s; text-decoration: none; display: inline-block;
+    }
+    .icon-btn:hover { background: rgba(0,122,255,0.1); }
+    .sync-dot {
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      margin-left: 6px; vertical-align: middle; transition: background 0.3s;
+    }
+    .sync-dot.ok   { background: var(--green); }
+    .sync-dot.busy { background: var(--orange); animation: pulse 1s infinite; }
+    .sync-dot.err  { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── Container ── */
+    .wrap { max-width: 600px; margin: 0 auto; padding: 16px 16px 0; }
+
+    /* ── Add button ── */
+    .add-row { margin-bottom: 20px; }
+    .add-main-btn {
+      width: 100%; padding: 15px; background: var(--card);
+      border: 1.5px dashed rgba(0,122,255,0.45); border-radius: 14px;
+      color: var(--accent); font-size: 15px; font-weight: 600; font-family: inherit;
+      cursor: pointer; box-shadow: var(--shadow);
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .add-main-btn:hover  { background: rgba(0,122,255,0.05); border-color: var(--accent); }
+    .add-main-btn:active { opacity: 0.7; }
+    .add-main-btn .plus  { font-size: 20px; line-height: 1; }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 24px; }
+    .section-title {
+      font-size: 13px; font-weight: 700; color: var(--sub); text-transform: uppercase;
+      letter-spacing: 0.5px; padding: 0 4px 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .section-count { font-weight: 500; opacity: 0.7; text-transform: none; letter-spacing: 0; }
+    .section-empty {
+      text-align: center; padding: 26px 16px; color: var(--sub); font-size: 14px;
+      background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
+    }
+
+    /* ── List ── */
+    .date-group { margin-bottom: 14px; }
+    .date-label { font-size: 12px; font-weight: 600; color: var(--sub); padding: 0 4px 8px; letter-spacing: 0.2px; }
+    .items-card { background: var(--card); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+    .item { display: flex; align-items: center; padding: 11px 14px; gap: 11px; }
+    .item:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .item-body   { flex: 1; min-width: 0; }
+    .item-desc   { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-tag    { font-size: 12px; color: var(--sub); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+    .confirm-btn, .unconfirm-btn {
+      background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+      font-family: inherit; padding: 5px 9px; border-radius: 8px; white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .confirm-btn   { color: var(--green); }
+    .confirm-btn:hover   { background: rgba(52,199,89,0.14); }
+    .unconfirm-btn { color: var(--sub); }
+    .unconfirm-btn:hover { background: rgba(108,108,112,0.14); }
+    .edit-btn {
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+      opacity: 0.4; transition: opacity 0.15s, color 0.15s;
+    }
+    .edit-btn:hover { opacity: 1; color: var(--accent); }
+    .del-btn {
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      font-size: 20px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+      opacity: 0.4; transition: opacity 0.15s, color 0.15s;
+    }
+    .del-btn:hover { opacity: 1; color: var(--red); }
+
+    /* ── FAB ── */
+    .fab {
+      position: fixed; bottom: 28px; right: 24px;
+      width: 58px; height: 58px; border-radius: 50%;
+      background: var(--accent); border: none; cursor: pointer;
+      color: #fff; font-size: 30px; line-height: 1;
+      box-shadow: 0 4px 20px rgba(0,122,255,0.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .fab:active { transform: scale(0.93); box-shadow: 0 2px 10px rgba(0,122,255,0.35); }
+
+    /* ── Sheet ── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 400;
+      display: flex; align-items: flex-end;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .overlay.open { opacity: 1; pointer-events: all; }
+    .sheet {
+      background: var(--card); border-radius: 20px 20px 0 0;
+      padding: 12px 20px 32px; width: 100%; max-width: 600px; margin: 0 auto;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      max-height: 90vh; overflow-y: auto;
+    }
+    .overlay.open .sheet { transform: translateY(0); }
+    .handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 18px; }
+    .sheet-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+
+    /* ── Form ── */
+    .fgrp { margin-bottom: 14px; }
+    .flabel { display: block; font-size: 12px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; }
+    .finput {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: 11px; font-size: 16px; font-family: inherit;
+      background: var(--bg); color: var(--text); outline: none; transition: border-color 0.2s;
+    }
+    .finput:focus { border-color: var(--accent); }
+    .seg { display: grid; gap: 8px; }
+    .seg2 { grid-template-columns: 1fr 1fr; }
+    .seg5 { grid-template-columns: repeat(5, 1fr); }
+    .seg input[type=radio] { display: none; }
+    .seg-lbl {
+      display: block; padding: 10px 6px 9px; border: 1.5px solid var(--border);
+      border-radius: 11px; text-align: center; cursor: pointer;
+      font-size: 13px; line-height: 1.35;
+      transition: border-color 0.2s, background 0.2s, color 0.2s; user-select: none;
+    }
+    .seg5 .seg-lbl { padding: 8px 2px; font-size: 12px; }
+    .seg input[type=radio]:checked + .seg-lbl {
+      border-color: var(--accent); background: rgba(0,122,255,0.08);
+      color: var(--accent); font-weight: 600;
+    }
+    .submit {
+      width: 100%; padding: 14px; background: var(--accent); color: #fff;
+      border: none; border-radius: 13px; font-size: 16px; font-weight: 600;
+      font-family: inherit; cursor: pointer; margin-top: 10px; transition: opacity 0.15s;
+    }
+    .submit:active   { opacity: 0.8; }
+    .submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<div id="lock-screen">
+  <div class="lock-card">
+    <div class="lock-icon">📅</div>
+    <div class="lock-title">活动安排</div>
+    <div class="lock-sub">请输入密码以继续</div>
+    <input type="password" class="lock-input" id="lock-input"
+           placeholder="••••••••" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')unlock()">
+    <div class="lock-error" id="lock-error"></div>
+    <button class="lock-btn" onclick="unlock()">进入</button>
+  </div>
+</div>
+
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <h1>活动安排<span class="sync-dot ok" id="sync-dot"></span></h1>
+      <div class="topbar-actions">
+        <a class="icon-btn" href="index.html">💰 开支</a>
+        <a class="icon-btn" href="shopping.html">🛒 购物</a>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="add-row">
+      <button class="add-main-btn" onclick="openAdd()">
+        <span class="plus">＋</span> 添加活动
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">待定<span class="section-count" id="count-proposed"></span></div>
+      <div id="list-proposed"></div>
+      <div class="section-empty" id="empty-proposed" style="display:none">暂无待定活动</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">已确认<span class="section-count" id="count-confirmed"></span></div>
+      <div id="list-confirmed"></div>
+      <div class="section-empty" id="empty-confirmed" style="display:none">暂无已确认活动</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Sheet -->
+<div class="overlay" id="add-overlay" onclick="overlayClick(event,'add-overlay')">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title" id="add-sheet-title">添加活动</div>
+    <div class="fgrp">
+      <label class="flabel">标题</label>
+      <input type="text" class="finput" id="f-title" placeholder="和朋友吃饭 / 打网球 …">
+    </div>
+    <div class="fgrp">
+      <label class="flabel">日期</label>
+      <input type="date" class="finput" id="f-date">
+    </div>
+    <div class="fgrp">
+      <label class="flabel">时段（选填）</label>
+      <div class="seg seg5">
+        <input type="radio" name="fperiod" id="fp-none" value="" checked>
+        <label class="seg-lbl" for="fp-none">不选</label>
+        <input type="radio" name="fperiod" id="fp-morning" value="morning">
+        <label class="seg-lbl" for="fp-morning">上午</label>
+        <input type="radio" name="fperiod" id="fp-afternoon" value="afternoon">
+        <label class="seg-lbl" for="fp-afternoon">下午</label>
+        <input type="radio" name="fperiod" id="fp-evening" value="evening">
+        <label class="seg-lbl" for="fp-evening">傍晚</label>
+        <input type="radio" name="fperiod" id="fp-night" value="night">
+        <label class="seg-lbl" for="fp-night">晚上</label>
+      </div>
+    </div>
+    <div class="fgrp">
+      <label class="flabel">精确时间（选填）</label>
+      <input type="time" class="finput" id="f-time">
+    </div>
+    <div class="fgrp">
+      <label class="flabel">地点/备注（选填）</label>
+      <input type="text" class="finput" id="f-note" placeholder="地点、和谁、备注…">
+    </div>
+    <div class="fgrp">
+      <label class="flabel">状态</label>
+      <div class="seg seg2">
+        <input type="radio" name="fstatus" id="fs-proposed" value="proposed" checked>
+        <label class="seg-lbl" for="fs-proposed">待定</label>
+        <input type="radio" name="fstatus" id="fs-confirmed" value="confirmed">
+        <label class="seg-lbl" for="fs-confirmed">已确认</label>
+      </div>
+    </div>
+    <button class="submit" id="add-submit-btn" onclick="submitActivity()">添加</button>
+  </div>
+</div>
+
+<button class="fab" onclick="openAdd()">+</button>
+
+<script>
+// ── Supabase REST (no SDK) ──
+const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
+const KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
+const H   = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+
+async function actGetAll() {
+  const r = await fetch(`${API}/activities?select=*&order=date.asc,id.asc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function actInsert(row) {
+  const r = await fetch(`${API}/activities`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify([row]),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0];
+}
+async function actUpdate(id, patch) {
+  const r = await fetch(`${API}/activities?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+async function actDelete(id) {
+  const r = await fetch(`${API}/activities?id=eq.${id}`, { method: 'DELETE', headers: H });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+// ── Password (shared with 开支/购物 page via same session key) ──
+const PWD_HASH    = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
+const SESSION_KEY = 'hh_auth';
+
+async function sha256(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+async function unlock() {
+  const inp = document.getElementById('lock-input');
+  const err = document.getElementById('lock-error');
+  if (!inp.value) { err.textContent = '请输入密码'; return; }
+  if (await sha256(inp.value) === PWD_HASH) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    document.getElementById('lock-screen').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    err.textContent = '';
+    initApp();
+  } else {
+    err.textContent = '密码错误，请重试';
+    inp.classList.add('error');
+    inp.value = '';
+    setTimeout(() => inp.classList.remove('error'), 400);
+  }
+}
+function lockApp() {
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById('lock-screen').classList.remove('hidden');
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('lock-input').value = '';
+  document.getElementById('lock-error').textContent = '';
+}
+
+// ── State ──
+let activities = [];
+let editingId  = null;
+
+const PERIOD_META = {
+  morning:   { label: '上午', rank: 0 },
+  afternoon: { label: '下午', rank: 1 },
+  evening:   { label: '傍晚', rank: 2 },
+  night:     { label: '晚上', rank: 3 },
+};
+const periodRank = p => PERIOD_META[p] ? PERIOD_META[p].rank : 4;
+
+const toLocal = r => ({
+  id: Number(r.id), title: r.title, date: r.date,
+  period: r.period || '', time: r.time || '', note: r.note || '', status: r.status,
+});
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function setSyncDot(s) { document.getElementById('sync-dot').className = 'sync-dot ' + s; }
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function fmtDate(ds) {
+  const d  = new Date(ds + 'T12:00:00');
+  const mo = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const wk = ['周日','周一','周二','周三','周四','周五','周六'];
+  return `${mo[d.getMonth()]}${d.getDate()}日 · ${wk[d.getDay()]}`;
+}
+
+// ── Init ──
+async function initApp() {
+  showLoading(true);
+  await loadActivities();
+  startPolling();
+  showLoading(false);
+}
+function showLoading(on) {
+  if (!on) return;
+  ['proposed', 'confirmed'].forEach(s => {
+    document.getElementById('list-' + s).innerHTML =
+      '<div class="loading-wrap"><div class="spinner"></div><span>加载中...</span></div>';
+    document.getElementById('empty-' + s).style.display = 'none';
+  });
+}
+async function loadActivities() {
+  setSyncDot('busy');
+  try {
+    activities = (await actGetAll()).map(toLocal);
+    setSyncDot('ok');
+    render();
+  } catch(e) { console.error(e); setSyncDot('err'); }
+}
+
+// Poll every 15s — skip while the add/edit sheet is open, to avoid clobbering input
+function startPolling() {
+  setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+    if (document.getElementById('add-overlay').classList.contains('open')) return;
+    try {
+      const fresh = (await actGetAll()).map(toLocal);
+      if (sig(fresh) !== sig(activities)) { activities = fresh; render(); }
+      setSyncDot('ok');
+    } catch(e) { setSyncDot('err'); }
+  }, 15000);
+}
+function sig(list) {
+  return list.map(a => `${a.id}:${a.title}:${a.date}:${a.period}:${a.time}:${a.note}:${a.status}`).join('|');
+}
+
+// ── Sort / group ──
+function sortActs(list) {
+  return [...list].sort((a, b) =>
+    (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) ||
+    (periodRank(a.period) - periodRank(b.period)) ||
+    (a.time < b.time ? -1 : a.time > b.time ? 1 : 0) ||
+    (a.id - b.id)
+  );
+}
+function groupedListHtml(list) {
+  const map = {};
+  list.forEach(a => { (map[a.date] = map[a.date] || []).push(a); });
+  const dates = Object.keys(map).sort();
+  return dates.map(date =>
+    `<div class="date-group"><div class="date-label">${fmtDate(date)}</div><div class="items-card">${map[date].map(itemRowHtml).join('')}</div></div>`
+  ).join('');
+}
+
+// ── Render ──
+function itemRowHtml(a) {
+  const meta = PERIOD_META[a.period];
+  const parts = [];
+  if (meta) parts.push(meta.label);
+  if (a.time) parts.push(a.time);
+  const timeTxt = parts.length ? parts.join(' · ') : '全天';
+  const tag = a.note ? `${timeTxt} · ${escHtml(a.note)}` : timeTxt;
+  const toggleBtn = a.status === 'proposed'
+    ? `<button class="confirm-btn" onclick="toggleStatus(${a.id})" title="标记已确认">✓ 确认</button>`
+    : `<button class="unconfirm-btn" onclick="toggleStatus(${a.id})" title="转为待定">↩ 转待定</button>`;
+  return `<div class="item">
+        <div class="item-body">
+          <div class="item-desc">${escHtml(a.title)}</div>
+          <div class="item-tag">${tag}</div>
+        </div>
+        <div class="item-actions">
+          ${toggleBtn}
+          <button class="edit-btn" onclick="openEdit(${a.id})" title="编辑">✎</button>
+          <button class="del-btn" onclick="askDel(${a.id})" title="删除">×</button>
+        </div>
+      </div>`;
+}
+function renderSection(status) {
+  const today = todayStr();
+  const list  = sortActs(activities.filter(a => a.status === status && a.date >= today));
+  const wrap  = document.getElementById('list-' + status);
+  const empty = document.getElementById('empty-' + status);
+  const count = document.getElementById('count-' + status);
+  count.textContent = list.length ? `· ${list.length}` : '';
+  if (!list.length) { wrap.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  wrap.innerHTML = groupedListHtml(list);
+}
+function render() { renderSection('proposed'); renderSection('confirmed'); }
+
+// ── Add / Edit ──
+function openAdd() {
+  editingId = null;
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-date').value  = todayStr();
+  document.getElementById('fp-none').checked = true;
+  document.getElementById('f-time').value  = '';
+  document.getElementById('f-note').value  = '';
+  document.getElementById('fs-proposed').checked = true;
+  document.getElementById('add-sheet-title').textContent = '添加活动';
+  document.getElementById('add-submit-btn').textContent  = '添加';
+  document.getElementById('add-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-title').focus(), 350);
+}
+function openEdit(id) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  editingId = id;
+  document.getElementById('f-title').value = a.title;
+  document.getElementById('f-date').value  = a.date;
+  document.getElementById(a.period ? 'fp-' + a.period : 'fp-none').checked = true;
+  document.getElementById('f-time').value  = a.time;
+  document.getElementById('f-note').value  = a.note;
+  document.getElementById(a.status === 'confirmed' ? 'fs-confirmed' : 'fs-proposed').checked = true;
+  document.getElementById('add-sheet-title').textContent = '编辑活动';
+  document.getElementById('add-submit-btn').textContent  = '保存修改';
+  document.getElementById('add-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-title').focus(), 350);
+}
+function closeAdd() { editingId = null; document.getElementById('add-overlay').classList.remove('open'); }
+
+async function submitActivity() {
+  const title  = document.getElementById('f-title').value.trim();
+  const date   = document.getElementById('f-date').value;
+  const period = document.querySelector('input[name="fperiod"]:checked').value;
+  const time   = document.getElementById('f-time').value;
+  const note   = document.getElementById('f-note').value.trim();
+  const status = document.querySelector('input[name="fstatus"]:checked').value;
+  if (!title || !date) { alert('请填写标题和日期'); return; }
+  const btn = document.getElementById('add-submit-btn');
+  btn.disabled = true; setSyncDot('busy');
+  try {
+    if (editingId !== null) {
+      await actUpdate(editingId, { title, date, period, time, note, status });
+      const idx = activities.findIndex(x => x.id === editingId);
+      if (idx !== -1) activities[idx] = { id: editingId, title, date, period, time, note, status };
+    } else {
+      const row = await actInsert({ title, date, period, time, note, status });
+      activities.push(toLocal(row));
+    }
+    setSyncDot('ok'); render(); closeAdd();
+  } catch(e) { console.error(e); setSyncDot('err'); }
+  btn.disabled = false;
+}
+
+// ── Status toggle ──
+async function toggleStatus(id) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  const next = a.status === 'proposed' ? 'confirmed' : 'proposed';
+  a.status = next;
+  render();
+  setSyncDot('busy');
+  try { await actUpdate(id, { status: next }); setSyncDot('ok'); }
+  catch(e) { console.error(e); setSyncDot('err'); }
+}
+
+// ── Delete ──
+function askDel(id) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  if (!confirm(`确定删除「${a.title}」吗？`)) return;
+  confirmDel(id);
+}
+async function confirmDel(id) {
+  const prev = activities;
+  activities = activities.filter(x => x.id !== id);
+  render();
+  setSyncDot('busy');
+  try { await actDelete(id); setSyncDot('ok'); }
+  catch(e) { console.error(e); setSyncDot('err'); activities = prev; render(); }
+}
+
+function overlayClick(e, id) {
+  if (e.target.classList.contains('overlay')) document.getElementById(id).classList.remove('open');
+}
+
+// ── Boot ──
+window.addEventListener('DOMContentLoaded', () => {
+  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+    document.getElementById('lock-screen').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    initApp();
+  } else {
+    document.getElementById('lock-input').focus();
+  }
+});
+</script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Verify the empty state loads**
+
+Serve the repo locally and open the page:
+
+```bash
+cd /Users/tantianshu/Documents/code/household_exp && python3 -m http.server 8000
+```
+
+Visit `http://localhost:8000/activity.html`. Enter the shared password (same one used on the 开支/购物 pages) and click 进入.
+
+Expected: the lock screen disappears, the topbar shows "活动安排" with a green sync dot, both sections render "暂无待定活动" and "暂无已确认活动", and the browser DevTools console shows no errors.
+
+- [ ] **Step 3: Verify add, sort/group, and status toggle**
+
+With the page open and unlocked:
+
+1. Click the ＋ FAB. Fill 标题 = `测试晚餐`, 日期 = two days from today, 时段 = `晚上`, 备注 = `测试`, leave 状态 = 待定. Submit.
+   - Expected: sheet closes, a new date group appears under **待定** showing "晚上 · 测试" under `测试晚餐`.
+2. Click ＋ again. Fill 标题 = `测试网球`, 日期 = **same date** as step 1, 时段 = `上午`, 状态 = 待定. Submit.
+   - Expected: both activities now sit in the same date group under 待定, with `测试网球` (上午) listed **above** `测试晚餐` (晚上).
+3. Click ＋ again. Fill 标题 = `测试早餐`, 日期 = today, 状态 = **已确认**. Submit.
+   - Expected: it appears under **已确认**, not 待定.
+4. Click "✓ 确认" on `测试网球` (in 待定).
+   - Expected: it disappears from 待定 and appears under 已确认 immediately; the section counts (`· N`) next to each heading update.
+5. Reload the page (`http://localhost:8000/activity.html`, re-enter password).
+   - Expected: `测试网球` is still listed under 已确认 (status change persisted server-side, not just local state).
+
+- [ ] **Step 4: Verify edit and delete**
+
+1. Click ✎ on `测试早餐`, change 备注 to `编辑测试`, save.
+   - Expected: the row updates immediately to show the new note; reload the page and confirm it's still there.
+2. Click × on `测试早餐`. A native browser confirm dialog appears ("确定删除「测试早餐」吗？"). Accept it.
+   - Expected: the row disappears immediately; reload the page and confirm it does not come back.
+3. Run:
+   ```bash
+   curl -s "https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/activities?select=title,status" \
+     -H "apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5" \
+     -H "Authorization: Bearer sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5"
+   ```
+   - Expected: `测试早餐` is absent (deleted), `测试网球` shows `"status":"confirmed"`, `测试晚餐` shows `"status":"proposed"`.
+
+- [ ] **Step 5: Verify past-dated activities are hidden but not deleted**
+
+1. Click ＋. Fill 标题 = `测试过期`, 日期 = yesterday, leave the rest default. Submit.
+   - Expected: the sheet closes and `测试过期` does **not** appear in either section.
+2. Run the same `curl` command from Step 4.3.
+   - Expected: `测试过期` **is** present in the response (row exists server-side; it's only filtered out of the UI because its date is in the past).
+3. Delete the leftover test rows (`测试晚餐`, `测试过期`) through the UI (click × on each, confirm) so the table is clean for real use, or via curl:
+   ```bash
+   curl -s "https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/activities?title=in.(测试晚餐,测试过期)" \
+     -X DELETE \
+     -H "apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5" \
+     -H "Authorization: Bearer sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5"
+   ```
+
+- [ ] **Step 6: Verify two-tab polling sync**
+
+1. Open `http://localhost:8000/activity.html` in two separate browser tabs, unlocking both.
+2. In tab A, add a new activity (any title/date).
+3. Switch to tab B and wait up to 15 seconds **without** clicking or reloading.
+   - Expected: the new activity appears automatically in tab B.
+4. Delete the test activity via either tab.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add activity.html
+git commit -m "$(cat <<'EOF'
+Add activity schedule page with proposed/confirmed states
+
+EOF
+)"
+```
+
+---
+
+## Task 3: Cross-link navigation between all three pages
+
+**Files:**
+- Modify: `index.html:369-375`
+- Modify: `shopping.html:280-284`
+
+- [ ] **Step 1: Add the 📅 日程 link to `index.html`'s topbar**
+
+In `index.html`, find:
+
+```html
+      <div class="topbar-actions">
+        <button class="icon-btn" onclick="openDrawer()">☰ 往期</button>
+        <a class="icon-btn" href="shopping.html" style="text-decoration:none;display:inline-block">🛒 购物</a>
+        <button class="icon-btn" onclick="openSettings()">设置</button>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
+      </div>
+```
+
+Replace it with:
+
+```html
+      <div class="topbar-actions">
+        <button class="icon-btn" onclick="openDrawer()">☰ 往期</button>
+        <a class="icon-btn" href="shopping.html" style="text-decoration:none;display:inline-block">🛒 购物</a>
+        <a class="icon-btn" href="activity.html" style="text-decoration:none;display:inline-block">📅 日程</a>
+        <button class="icon-btn" onclick="openSettings()">设置</button>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
+      </div>
+```
+
+- [ ] **Step 2: Add the 📅 日程 link to `shopping.html`'s topbar**
+
+In `shopping.html`, find:
+
+```html
+      <div class="topbar-actions">
+        <a class="icon-btn" href="index.html">💰 开支</a>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
+      </div>
+```
+
+Replace it with:
+
+```html
+      <div class="topbar-actions">
+        <a class="icon-btn" href="index.html">💰 开支</a>
+        <a class="icon-btn" href="activity.html">📅 日程</a>
+        <button class="icon-btn" onclick="lockApp()">锁定</button>
+      </div>
+```
+
+- [ ] **Step 3: Verify navigation across all three pages**
+
+With the local server still running (`http://localhost:8000/`):
+
+1. Open `index.html`, unlock with the password.
+2. Click `📅 日程` → expected: lands on `activity.html` **already unlocked** (no password prompt, since `SESSION_KEY` is shared).
+3. Click `🛒 购物` → expected: lands on `shopping.html`, still unlocked.
+4. Click `📅 日程` → expected: back on `activity.html`, still unlocked.
+5. Click `💰 开支` → expected: back on `index.html`, still unlocked.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add index.html shopping.html
+git commit -m "$(cat <<'EOF'
+Cross-link the new activity schedule page from expense and shopping pages
+
+EOF
+)"
+```
+
+---
+
+## Task 4: Final polish pass — dark mode and mobile width
+
+**Files:** none expected (verification only; only touch `activity.html` if a real issue is found)
+
+- [ ] **Step 1: Verify dark mode**
+
+In Chrome DevTools: Cmd+Shift+P → "Rendering" → set "Emulate CSS media feature prefers-color-scheme" to `dark`. Reload `activity.html`.
+
+Expected: background turns black, cards turn dark gray (`#1c1c1e`), text stays legible (white/light gray), the accent blue/green/red colors remain visible on both the section titles and the confirm/unconfirm buttons. No unstyled white flashes.
+
+- [ ] **Step 2: Verify mobile width**
+
+In Chrome DevTools, toggle device toolbar and set width to 375px (iPhone SE class).
+
+Expected: the topbar's three nav items don't wrap or overflow; the FAB doesn't overlap the last list item; the add/edit sheet's 时段 row (5 segmented buttons) stays on one row without text clipping or overlap; all buttons remain tappable (no overlapping hit areas).
+
+- [ ] **Step 3: Fix and commit if anything is broken**
+
+If Step 1 or Step 2 surfaced a real visual bug, fix it directly in `activity.html`, re-verify, then commit:
+
+```bash
+git add activity.html
+git commit -m "$(cat <<'EOF'
+Fix dark mode / mobile layout issue on activity page
+
+EOF
+)"
+```
+
+If nothing was broken, skip the commit — there's nothing to record.
+
+---
+
+## Self-review notes
+
+- **Spec coverage:** every decision in `docs/superpowers/specs/2026-07-27-activity-schedule-design.md` maps to a step above — table schema (Task 1), page shell + password reuse (Task 2 Step 1/2), add form fields incl. optional period/time/note (Task 2 Step 1/3), two-section layout + date grouping + sort order (Task 2 Step 1/3), status toggle both directions (Task 2 Step 3), edit (Task 2 Step 4), delete with native confirm (Task 2 Step 4), past-date auto-hide without server-side deletion (Task 2 Step 5), 15s polling sync (Task 2 Step 6), three-page cross-linking (Task 3).
+- **No seed data:** unlike `shopping.html`, the design doc doesn't call for seeding sample activities on first load, so `activity.html` intentionally starts with an empty table and no seeding logic.
