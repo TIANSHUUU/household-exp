@@ -135,6 +135,8 @@
       font-size: 13px; font-weight: 700; color: var(--sub); text-transform: uppercase;
       letter-spacing: 0.5px; padding: 0 4px 10px; display: flex; align-items: center; gap: 6px;
     }
+    .section-title-proposed  { color: var(--orange); }
+    .section-title-confirmed { color: var(--green); }
     .section-count { font-weight: 500; opacity: 0.7; text-transform: none; letter-spacing: 0; }
     .section-empty {
       text-align: center; padding: 26px 16px; color: var(--sub); font-size: 14px;
@@ -162,7 +164,8 @@
       font-family: inherit; padding: 5px 9px; border-radius: 8px; white-space: nowrap;
       transition: background 0.15s; color: var(--sub);
     }
-    .confirm-btn:hover, .unconfirm-btn:hover { background: rgba(108,108,112,0.14); }
+    .confirm-btn:hover   { color: var(--green);  background: rgba(52,199,89,0.14); }
+    .unconfirm-btn:hover { color: var(--orange); background: rgba(255,149,0,0.14); }
     .edit-btn {
       background: none; border: none; cursor: pointer; color: var(--sub);
       font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
@@ -274,13 +277,13 @@
     </div>
 
     <div class="section">
-      <div class="section-title">待定<span class="section-count" id="count-proposed"></span></div>
+      <div class="section-title section-title-proposed">待定<span class="section-count" id="count-proposed"></span></div>
       <div id="list-proposed"></div>
       <div class="section-empty" id="empty-proposed" style="display:none">暂无待定活动</div>
     </div>
 
     <div class="section">
-      <div class="section-title">已确认<span class="section-count" id="count-confirmed"></span></div>
+      <div class="section-title section-title-confirmed">已确认<span class="section-count" id="count-confirmed"></span></div>
       <div id="list-confirmed"></div>
       <div class="section-empty" id="empty-confirmed" style="display:none">暂无已确认活动</div>
     </div>
