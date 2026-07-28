@@ -188,6 +188,14 @@
       opacity: 0.4; transition: opacity 0.15s, color 0.15s; flex-shrink: 0;
     }
     .sdel:hover { opacity: 1; color: var(--red); }
+    .slink {
+      background: none; border: none; cursor: pointer; color: var(--sub);
+      text-decoration: none; font-size: 15px; line-height: 1; padding: 4px 6px;
+      border-radius: 6px; opacity: 0.35; transition: opacity 0.15s, color 0.15s; flex-shrink: 0;
+    }
+    .slink:hover { opacity: 0.7; }
+    .slink-on { opacity: 1; color: var(--accent); }
+    .slink-on:hover { opacity: 0.8; }
 
     .add-item-row { display: flex; align-items: center; padding: 10px 14px; gap: 10px; background: var(--bg); }
     .add-item-input {
@@ -352,7 +360,7 @@ async function loadAll() {
   return ls.map(l => ({
     id: Number(l.id), name: l.name,
     items: its.filter(i => Number(i.list_id) === Number(l.id))
-              .map(i => ({ id: Number(i.id), name: i.name, checked: !!i.checked,
+              .map(i => ({ id: Number(i.id), name: i.name, checked: !!i.checked, link: i.link || '',
                            position: i.position == null ? Number(i.id) : Number(i.position) }))
               .sort((a, b) => (a.position - b.position) || (a.id - b.id)),
   }));
@@ -492,7 +500,7 @@ async function loadLists() {
       const l = await slInsertList(SEED_LIST);
       const inserted = await siInsertItems(l.id, SEED_ITEMS);
       data = [{ id: Number(l.id), name: l.name, items: inserted
-        .map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked,
+        .map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked, link: r.link || '',
                      position: r.position == null ? Number(r.id) : Number(r.position) }))
         .sort((a, b) => (a.position - b.position) || (a.id - b.id)) }];
     }
@@ -516,7 +524,7 @@ function startPolling() {
   }, 15000);
 }
 function sig(ls) {
-  return ls.map(l => `${l.id}:${l.name}[${l.items.map(i => `${i.id}${i.checked ? 1 : 0}${i.name}:${i.position}`).join(',')}]`).join('|');
+  return ls.map(l => `${l.id}:${l.name}[${l.items.map(i => `${i.id}${i.checked ? 1 : 0}${i.name}:${i.position}:${i.link}`).join(',')}]`).join('|');
 }
 
 // ── Render ──
@@ -533,7 +541,11 @@ function displayItems(l) {
 }
 function listCardHtml(l) {
   const remaining = l.items.filter(i => !i.checked).length;
-  const items = displayItems(l).map(it => `
+  const items = displayItems(l).map(it => {
+    const linkHtml = /^https?:\/\//i.test(it.link || '')
+      ? `<a class="slink slink-on" href="${escHtml(it.link)}" target="_blank" rel="noopener noreferrer" title="打开商品链接">🔗</a>`
+      : `<button class="slink" onclick="editItemLink(${l.id},${it.id})" title="添加商品链接">🔗</button>`;
+    return `
       <div class="sitem ${it.checked ? 'checked' : ''}" draggable="false"
            ondragstart="dragStart(event,${l.id},${it.id})" ondragover="dragOver(event,${l.id})"
            ondragleave="dragLeave(event)" ondrop="dropItem(event,${l.id},${it.id})" ondragend="dragEnd(event)">
@@ -541,8 +553,10 @@ function listCardHtml(l) {
               onmousedown="this.closest('.sitem').setAttribute('draggable','true')">⠿</span>
         <div class="check ${it.checked ? 'on' : ''}" onclick="toggleItem(${l.id},${it.id})">${it.checked ? '✓' : ''}</div>
         <div class="sitem-name" id="name-${l.id}-${it.id}" onclick="startEditItem(${l.id},${it.id})">${escHtml(it.name)}</div>
+        ${linkHtml}
         <button class="sdel" onclick="deleteItem(${l.id},${it.id})" title="删除">×</button>
-      </div>`).join('');
+      </div>`;
+  }).join('');
   return `<div class="list-card">
     <div class="list-head">
       <div class="list-name"><span class="emoji">🛒</span><span class="txt" id="lname-${l.id}" onclick="startEditList(${l.id})">${escHtml(l.name)}</span><span class="list-count">${remaining}/${l.items.length}</span></div>
@@ -589,9 +603,9 @@ async function copyList(listId) {
   try {
     const newList = await slInsertList(src.name + ' 副本');
     const ordered = src.items.slice().sort((a, b) => (a.position - b.position) || (a.id - b.id));
-    const rows = ordered.map((it, idx) => ({ list_id: newList.id, name: it.name, checked: false, position: idx }));
+    const rows = ordered.map((it, idx) => ({ list_id: newList.id, name: it.name, checked: false, link: it.link || '', position: idx }));
     const inserted = rows.length ? await siInsertRows(rows) : [];
-    const items = inserted.map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked,
+    const items = inserted.map(r => ({ id: Number(r.id), name: r.name, checked: !!r.checked, link: r.link || '',
                                        position: r.position == null ? Number(r.id) : Number(r.position) }))
                           .sort((a, b) => (a.position - b.position) || (a.id - b.id));
     lists.push({ id: Number(newList.id), name: newList.name, items });
@@ -611,7 +625,7 @@ async function addItem(listId) {
     const list   = lists.find(l => l.id === listId);
     const nextPos = list.items.reduce((m, i) => Math.max(m, i.position), -1) + 1;
     const row    = await siInsertItem(listId, name, nextPos);
-    list.items.push({ id: Number(row.id), name: row.name, checked: !!row.checked,
+    list.items.push({ id: Number(row.id), name: row.name, checked: !!row.checked, link: row.link || '',
                       position: row.position == null ? nextPos : Number(row.position) });
     setSyncDot('ok');
     render();
@@ -633,6 +647,17 @@ async function deleteItem(listId, itemId) {
   render();
   setSyncDot('busy');
   try { await siDeleteItem(itemId); setSyncDot('ok'); }
+  catch(e) { console.error(e); setSyncDot('err'); }
+}
+async function editItemLink(listId, itemId) {
+  const it = lists.find(l => l.id === listId).items.find(i => i.id === itemId);
+  const input = prompt('商品链接（粘贴网址，留空可清除）', it.link || '');
+  if (input === null) return;
+  const link = input.trim();
+  it.link = link;
+  render();
+  setSyncDot('busy');
+  try { await siPatch(itemId, { link }); setSyncDot('ok'); }
   catch(e) { console.error(e); setSyncDot('err'); }
 }
 function startEditItem(listId, itemId) {
