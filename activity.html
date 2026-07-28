@@ -157,7 +157,9 @@
     .item:not(:last-child) { border-bottom: 1px solid var(--border); }
     .item-body   { flex: 1; min-width: 0; }
     .item-desc   { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item-tag    { font-size: 12px; color: var(--sub); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-tag    { font-size: 12px; color: var(--sub); margin-top: 3px; display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .item-tag-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .link-pin    { flex-shrink: 0; text-decoration: none; font-size: 13px; line-height: 1; }
     .item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
     .confirm-btn, .unconfirm-btn {
       background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600;
@@ -218,6 +220,9 @@
       background: var(--bg); color: var(--text); outline: none; transition: border-color 0.2s;
     }
     .finput:focus { border-color: var(--accent); }
+    .time-range { display: flex; align-items: center; gap: 8px; }
+    .time-range .finput { flex: 1; min-width: 0; }
+    .time-range-sep { color: var(--sub); flex-shrink: 0; }
     .seg { display: grid; gap: 8px; }
     .seg2 { grid-template-columns: 1fr 1fr; }
     .seg5 { grid-template-columns: repeat(5, 1fr); }
@@ -320,11 +325,19 @@
     </div>
     <div class="fgrp">
       <label class="flabel">精确时间（选填）</label>
-      <input type="time" class="finput" id="f-time">
+      <div class="time-range">
+        <input type="time" class="finput" id="f-time" aria-label="开始时间">
+        <span class="time-range-sep">–</span>
+        <input type="time" class="finput" id="f-time-end" aria-label="结束时间">
+      </div>
     </div>
     <div class="fgrp">
       <label class="flabel">地点/备注（选填）</label>
       <input type="text" class="finput" id="f-note" placeholder="地点、和谁、备注…">
+    </div>
+    <div class="fgrp">
+      <label class="flabel">地址链接（选填）</label>
+      <input type="text" class="finput" id="f-link" placeholder="https://maps.google.com/...">
     </div>
     <div class="fgrp">
       <label class="flabel">状态</label>
@@ -419,7 +432,8 @@ const periodRank = p => PERIOD_META[p] ? PERIOD_META[p].rank : 4;
 
 const toLocal = r => ({
   id: Number(r.id), title: r.title, date: r.date,
-  period: r.period || '', time: r.time || '', note: r.note || '', status: r.status,
+  period: r.period || '', time: r.time || '', timeEnd: r.time_end || '',
+  note: r.note || '', link: r.link || '', status: r.status,
 });
 
 function escHtml(s) {
@@ -502,9 +516,14 @@ function itemRowHtml(a) {
   const meta = PERIOD_META[a.period];
   const parts = [];
   if (meta) parts.push(meta.label);
-  if (a.time) parts.push(escHtml(a.time));
+  if (a.time) parts.push(escHtml(a.time) + (a.timeEnd ? `–${escHtml(a.timeEnd)}` : ''));
   const timeTxt = parts.length ? parts.join(' · ') : '全天';
-  const tag = a.note ? `${timeTxt} · ${escHtml(a.note)}` : timeTxt;
+  const isHttpLink = /^https?:\/\//i.test(a.link || '');
+  const linkHtml = isHttpLink
+    ? `<a class="link-pin" href="${escHtml(a.link)}" target="_blank" rel="noopener noreferrer" title="打开地址链接">📍</a>`
+    : '';
+  const tagText = a.note ? `${timeTxt} · ${escHtml(a.note)}` : timeTxt;
+  const tag = `<span class="item-tag-text">${tagText}</span>${linkHtml}`;
   const toggleBtn = a.status === 'proposed'
     ? `<button class="confirm-btn" onclick="toggleStatus(${a.id})" title="标记已确认">✓ 确认</button>`
     : `<button class="unconfirm-btn" onclick="toggleStatus(${a.id})" title="转为待定">↩ 转待定</button>`;
@@ -540,7 +559,9 @@ function openAdd() {
   document.getElementById('f-date').value  = todayStr();
   document.getElementById('fp-none').checked = true;
   document.getElementById('f-time').value  = '';
+  document.getElementById('f-time-end').value = '';
   document.getElementById('f-note').value  = '';
+  document.getElementById('f-link').value  = '';
   document.getElementById('fs-proposed').checked = true;
   document.getElementById('add-sheet-title').textContent = '添加活动';
   document.getElementById('add-submit-btn').textContent  = '添加';
@@ -555,7 +576,9 @@ function openEdit(id) {
   document.getElementById('f-date').value  = a.date;
   document.getElementById(a.period ? 'fp-' + a.period : 'fp-none').checked = true;
   document.getElementById('f-time').value  = a.time;
+  document.getElementById('f-time-end').value = a.timeEnd;
   document.getElementById('f-note').value  = a.note;
+  document.getElementById('f-link').value  = a.link;
   document.getElementById(a.status === 'confirmed' ? 'fs-confirmed' : 'fs-proposed').checked = true;
   document.getElementById('add-sheet-title').textContent = '编辑活动';
   document.getElementById('add-submit-btn').textContent  = '保存修改';
@@ -567,20 +590,24 @@ function closeAdd() { editingId = null; document.getElementById('add-overlay').c
 async function submitActivity() {
   const title  = document.getElementById('f-title').value.trim();
   const date   = document.getElementById('f-date').value;
-  const period = document.querySelector('input[name="fperiod"]:checked').value;
-  const time   = document.getElementById('f-time').value;
-  const note   = document.getElementById('f-note').value.trim();
-  const status = document.querySelector('input[name="fstatus"]:checked').value;
+  const period  = document.querySelector('input[name="fperiod"]:checked').value;
+  const time    = document.getElementById('f-time').value;
+  const timeEnd = document.getElementById('f-time-end').value;
+  const note    = document.getElementById('f-note').value.trim();
+  const link    = document.getElementById('f-link').value.trim();
+  const status  = document.querySelector('input[name="fstatus"]:checked').value;
   if (!title || !date) { alert('请填写标题和日期'); return; }
+  if (time && timeEnd && timeEnd <= time) { alert('结束时间要晚于开始时间'); return; }
   const btn = document.getElementById('add-submit-btn');
   btn.disabled = true; setSyncDot('busy');
   try {
+    const payload = { title, date, period, time, time_end: timeEnd, note, link, status };
     if (editingId !== null) {
-      await actUpdate(editingId, { title, date, period, time, note, status });
+      await actUpdate(editingId, payload);
       const idx = activities.findIndex(x => x.id === editingId);
-      if (idx !== -1) activities[idx] = { id: editingId, title, date, period, time, note, status };
+      if (idx !== -1) activities[idx] = { id: editingId, title, date, period, time, timeEnd, note, link, status };
     } else {
-      const row = await actInsert({ title, date, period, time, note, status });
+      const row = await actInsert(payload);
       activities.push(toLocal(row));
     }
     setSyncDot('ok'); render(); closeAdd();
