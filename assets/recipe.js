@@ -214,7 +214,113 @@ function dataSig() {
 }
 
 // ── 视图（后续任务逐个替换） ──
-function renderList()   { $('view').innerHTML = '<div class="empty">列表页占位</div>'; }
+function allTags() {
+  const s = new Set();
+  for (const r of recipes) for (const t of (r.tags || [])) s.add(t);
+  return Array.from(s).sort();
+}
+
+function cardHtml(r, num) {
+  const img = r.cover_url
+    ? `<img src="${escHtml(r.cover_url)}" alt="${escHtml(r.name)}" loading="lazy">`
+    : '<div class="noimg">🍽</div>';
+  const tags = (r.tags || []).join(' · ');
+  return `<a class="card" href="#/r/${r.id}">
+    <div class="card-img">${img}</div>
+    <div class="card-meta">
+      <span class="card-num">№ ${String(num).padStart(2, '0')}</span>
+      ${tags ? `<span class="card-tags">${escHtml(tags)}</span>` : ''}
+    </div>
+    <h2>${escHtml(r.name)}</h2>
+  </a>`;
+}
+
+function gridHtml(list, startNum) {
+  return '<div class="grid">' +
+    list.map((r, i) => cardHtml(r, startNum + i)).join('') + '</div>';
+}
+
+function renderList() {
+  const tags = allTags();
+  const tagbar = tags.length ? '<div class="tagbar">' +
+    `<button class="tag-chip${listTag ? '' : ' on'}" onclick="pickTag('')">全部</button>` +
+    tags.map(t => `<button class="tag-chip${listTag === t ? ' on' : ''}" onclick="pickTag('${escHtml(t)}')">${escHtml(t)}</button>`).join('') +
+    '</div>' : '';
+
+  const toolbar = `<div class="toolbar">
+      <div class="search-box">
+        <input id="q" type="text" placeholder="搜索菜名或食材…" value="${escHtml(listQuery)}"
+               oninput="onSearchInput(this.value)" autocomplete="off">
+        <div class="suggest hidden" id="q-suggest"></div>
+      </div>
+      <a class="btn btn-ghost" href="#/idea">🧊 冰箱里有什么</a>
+      <a class="btn btn-accent" href="#/new">+ 新食谱</a>
+    </div>`;
+
+  let body;
+  if (!recipes.length) {
+    body = '<div class="empty">还没有食谱。<br>点右上角「+ 新食谱」记下第一道菜吧。</div>';
+  } else if (listQuery.trim()) {
+    const { byName, byIngredient } = searchRecipes(listQuery, filteredByTag(), aliasMap);
+    if (!byName.length && !byIngredient.length) {
+      body = `<div class="empty">没有找到含「${escHtml(listQuery)}」的食谱。</div>`;
+    } else {
+      body = '';
+      if (byName.length) body += `<div class="group-title">菜名含此词 (${byName.length})</div>` + gridHtml(byName, 1);
+      if (byIngredient.length) body += `<div class="group-title">食材含此词 (${byIngredient.length})</div>` + gridHtml(byIngredient, 1);
+    }
+  } else {
+    const list = filteredByTag();
+    body = list.length ? gridHtml(list, 1) : `<div class="empty">没有标签为「${escHtml(listTag)}」的食谱。</div>`;
+  }
+
+  $('view').innerHTML = toolbar + tagbar + body;
+}
+
+function filteredByTag() {
+  if (!listTag) return recipes;
+  return recipes.filter(r => (r.tags || []).includes(listTag));
+}
+
+function pickTag(t) { listTag = t; renderList(); }
+
+function onSearchInput(v) {
+  listQuery = v;
+  const box = $('q-suggest');
+  const nv = normKey(v);
+  if (!nv) { box.classList.add('hidden'); renderListKeepFocus(); return; }
+  const pool = new Set();
+  for (const r of recipes) if (normKey(r.name).includes(nv)) pool.add(r.name);
+  for (const w of vocab) {
+    if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
+    for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
+  }
+  const items = Array.from(pool).slice(0, 8);
+  if (!items.length) { box.classList.add('hidden'); renderListKeepFocus(); return; }
+  box.innerHTML = items.map(t => `<div onmousedown="applySuggest('${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.classList.remove('hidden');
+  renderListKeepFocus(true);
+}
+
+// 重渲染列表但保住输入框的焦点和光标位置（搜索是边打边筛的）
+function renderListKeepFocus(keepSuggest) {
+  const el = $('q');
+  const pos = el ? el.selectionStart : null;
+  const sug = keepSuggest ? $('q-suggest').innerHTML : '';
+  renderList();
+  const el2 = $('q');
+  if (el2) {
+    el2.focus();
+    if (pos != null) el2.setSelectionRange(pos, pos);
+  }
+  if (sug) { $('q-suggest').innerHTML = sug; $('q-suggest').classList.remove('hidden'); }
+}
+
+function applySuggest(t) {
+  listQuery = t;
+  $('q-suggest').classList.add('hidden');
+  renderList();
+}
 function renderDetail() { $('view').innerHTML = '<div class="empty">详情页占位</div>'; }
 function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
 function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
