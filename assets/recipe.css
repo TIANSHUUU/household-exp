@@ -203,10 +203,15 @@ body {
 
 /* ── 详情页 ── */
 .detail { max-width: 720px; margin: 0 auto; }
+/* 详情页封面按原比例完整显示——手机拍的菜多是竖构图，固定 16:10 会把主体裁掉一半。
+   首页卡片仍用 16:10 裁切保持网格整齐。max-height 防止竖图占满整屏。 */
 .detail-cover {
-  aspect-ratio: 16 / 10; overflow: hidden; background: #EFE9DC; margin-bottom: 22px;
+  overflow: hidden; background: #EFE9DC; margin-bottom: 22px;
+  display: flex; justify-content: center;
 }
-.detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+.detail-cover img {
+  width: auto; max-width: 100%; height: auto; max-height: 70vh; object-fit: contain;
+}
 .detail h1 {
   font-family: 'Fraunces', 'Noto Serif SC', Georgia, serif;
   font-size: 34px; font-weight: 700; line-height: 1.15; margin-bottom: 8px;
