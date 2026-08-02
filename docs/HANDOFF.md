@@ -168,6 +168,34 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 
 > 另一个需要排除的可能：如果强刷后仍然空白，去看手机浏览器的 console —— 有可能是某个 ES 语法在旧版 iOS Safari 上不支持（代码里用了可选链、展开、`Object.entries` 等）。但优先验证缓存假设，它更符合「标签正常、名字为空」这个特定组合。
 
+### 🔴 全部数据对公网可读可写（既有问题，非本次引入）
+
+**仓库是 PUBLIC 的**（`gh repo view` 确认；GitHub Pages 免费版要求如此）。四个页面的源码里都写着 Supabase URL 和匿名 key，任何人查看网页源码即可提取。
+
+配上 `for all using(true) with check(true)` 的 RLS 策略，结果是：**任何人都能读、改、删全部数据。**
+
+2026-08-02 实测（只用公开页面里能提取到的信息）：
+
+| 表 | 可读记录数 |
+|---|---|
+| `expenses` | 107 |
+| `cycles` | 3 |
+| `shopping_lists` / `shopping_items` | 2 / 39 |
+| `activities` | 9 |
+| `recipes` | 1 |
+
+**密码门只挡 UI，不挡 API。** 它把界面藏起来了，数据接口是完全敞开的。这是四个页面从第一天起的设计，不是食谱页引入的。
+
+现实风险取决于有没有人找到这个站——但仓库在 GitHub 上公开可搜，源码里就写着 Supabase 地址。
+
+**可选的收敛方向**（都需要用户决策，别擅自动手，会影响全部四个页面）：
+
+1. **仓库转私有** —— 但 GitHub Pages 免费版要求公开仓库，需要 Pro 订阅。挡住了源码搜索，挡不住已经看过页面的人。
+2. **换成 Supabase Auth 真登录**，RLS 策略改成 `auth.uid() is not null`。最彻底，但要给两人建账号，四个页面的密码门全部重写。
+3. **接受现状** —— 数据是两个人的家庭开支和菜谱，不是信用卡号。评估过认为可接受也是一种有效选择，但应当是**知情后的选择**，而不是默认。
+
+在用户明确表态前，**不要把任何含个人信息的文件提交进仓库**（`requirement.md` 就是因此被 gitignore 的）。
+
 ### 🟡 别名表只自动长 canonical，不长别名
 
 用户在网页上录新食材时，写入的是 `{canonical: '番茄', aliases: [], staple: false}`。所以录了「番茄」之后，输「西红柿」仍然被当成另一样东西。
@@ -203,14 +231,14 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 
 `git status` 会一直显示这四项。**它们都不是遗漏的产物，也不是垃圾**，但目前谁都没决定要不要进版本库。`.gitignore` 里现在只有 `.worktrees/` 和 `.DS_Store`。
 
-| 路径 | 是什么 | 状态 |
-|---|---|---|
-| `recipe-details/` | 食谱录入的源料目录，见下 | ✅ **已决定：`.gitignore`**（2026-08-02） |
-| `requirement.md` | 家庭账单页（`index.html`）最初的需求描述，含用户手写的一个月开支流水样例 | 仍未跟踪。建议提交进 `docs/`——是这个页面为什么长这样的唯一记录 |
-| `shopping_list.md` | 购物清单页（`shopping.html`）最初的需求描述 | 同上 |
-| `.claude/settings.json` | Claude Code 的项目级 Bash 权限白名单，没有任何密钥 | 仍未跟踪。建议提交，让两台电脑权限一致、少点授权弹窗 |
+四项都已处理完（2026-08-02），工作区现在是干净的：
 
-后三项还没定，动它们之前先问用户。
+| 路径 | 是什么 | 处理 |
+|---|---|---|
+| `recipe-details/` | 食谱录入的源料目录，见下 | `.gitignore` |
+| `requirement.md` | 家庭账单页最初的需求描述，含房租金额、分账方式、一整月开支流水 | `.gitignore` ⚠️ **仓库是公开的，不要提交** |
+| `shopping_list.md` | 购物清单页最初的需求描述 | `.gitignore`，同上 |
+| `.claude/settings.json` | Claude Code 的项目级 Bash 权限白名单，无密钥 | ✅ 已提交 |
 
 ### `recipe-details/` 是录入工作流的一部分
 
@@ -335,6 +363,7 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 
 ## 八、下一步建议顺序
 
+0. **和用户确认数据公开可读这件事**（第五节 🔴）——这是唯一涉及隐私的问题，值得先摆到台面上，即使结论是「接受现状」
 1. **验证并修复手机端空白**（第五节，先让用户强刷确认假设，再给资源链接加版本号）
 2. **部署 Edge Function**（第四节），部署后实际翻一次「Bill 松饼」并人工校对计量单位
 3. 加 `normalize` action，解决别名表不自动长别名的问题
