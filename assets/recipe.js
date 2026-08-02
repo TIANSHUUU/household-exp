@@ -403,7 +403,25 @@ function renderDetail(id) {
   </article>`;
 }
 
-function askDelete(id) { alert('删除功能在 Task 13 实现'); }
+async function askDelete(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`确定删除「${r.name}」？这一步不可撤销。`)) return;
+  setSync('busy');
+  try {
+    await recipeDelete(id);
+    // 图片删除失败不阻断——食谱已经没了，留几张孤儿图无所谓
+    const urls = (r.cover_url ? [r.cover_url] : []).concat(r.image_urls || []);
+    await Promise.all(urls.map(deleteImage));
+    recipes = recipes.filter(x => x.id !== id);
+    setSync('ok');
+    location.hash = '#/';
+    render();
+  } catch (e) {
+    setSync('err');
+    alert('删除失败：' + e.message);
+  }
+}
 // 编辑中的草稿。renderEditor 会重建它，之后所有输入改的都是这个对象。
 let draft = null;
 
