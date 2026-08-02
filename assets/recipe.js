@@ -190,7 +190,13 @@ async function recipeDelete(id) {
 }
 
 // ── 图片 ──
-// 上传前在浏览器压到长边 1600px 的 JPEG，省流量也让页面加载快。
+// 超过这个大小才压缩。手机照片基本都在这以下，原样上传能保住 iPhone HDR 照片的
+// gain map（APP2/MPF 段）和 ICC profile —— canvas 一定会把它们丢掉，没有例外，
+// 丢了之后照片在 HDR 屏上只剩压平的 SDR 基础层，看起来发灰。
+// 卡片图有 loading="lazy"，所以原图带来的流量代价可控。
+const SHRINK_OVER_BYTES = 4 * 1024 * 1024;
+
+// 压到长边 1600px 的 JPEG。只对超大文件用——见上面 SHRINK_OVER_BYTES 的说明。
 async function shrinkImage(file, maxEdge, quality) {
   const cap = maxEdge || 1600, q = quality == null ? 0.85 : quality;
   const bitmap = await createImageBitmap(file);
@@ -203,17 +209,18 @@ async function shrinkImage(file, maxEdge, quality) {
   return await new Promise(res => canvas.toBlob(res, 'image/jpeg', q));
 }
 
-function randomName() {
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
+function randomName(type) {
+  const ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[type] || 'jpg';
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6) + '.' + ext;
 }
 
-// 返回公开可读的 URL
+// 返回公开可读的 URL。小图原样传（保住 HDR/色彩），大图才压。
 async function uploadImage(folder, file) {
-  const blob = await shrinkImage(file);
-  const path = `recipes/${folder}/${randomName()}`;
+  const blob = file.size > SHRINK_OVER_BYTES ? await shrinkImage(file) : file;
+  const path = `recipes/${folder}/${randomName(blob.type)}`;
   const r = await fetch(`${STORAGE}/object/${BUCKET}/${path}`, {
     method: 'POST',
-    headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'image/jpeg' },
+    headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': blob.type || 'image/jpeg' },
     body: blob,
   });
   if (!r.ok) throw new Error(await r.text());
