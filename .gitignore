@@ -5,3 +5,9 @@
 # 有意不进版本库：照片母版交给相册备份系统，仓库只放代码。
 # 详见 docs/HANDOFF.md 第五点五节。
 recipe-details/
+
+# 这两份是最初的需求笔记，含房租金额、分账方式、一整月开支流水。
+# 仓库是公开的（GitHub Pages 免费版要求），所以刻意不提交。
+# 想保留就留在本地；详见 docs/HANDOFF.md 第五点五节。
+requirement.md
+shopping_list.md
