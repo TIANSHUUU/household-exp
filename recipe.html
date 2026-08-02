@@ -15,25 +15,26 @@
 <div id="lock-screen">
   <div class="lock-card">
     <div class="lock-icon">🍳</div>
-    <div class="lock-title">家庭食谱</div>
-    <div class="lock-sub">请输入密码以继续</div>
+    <div class="lock-title" id="lock-title">家庭食谱</div>
+    <div class="lock-sub" id="lock-sub">请输入密码以继续</div>
     <input type="password" class="lock-input" id="lock-input"
            placeholder="••••••••" autocomplete="current-password"
            onkeydown="if(event.key==='Enter')unlock()">
     <div class="lock-error" id="lock-error"></div>
-    <button class="lock-btn" onclick="unlock()">进入</button>
+    <button class="lock-btn" id="lock-btn" onclick="unlock()">进入</button>
   </div>
 </div>
 
 <div id="app">
   <header class="topbar header-gradient">
     <div class="topbar-inner">
-      <h1 onclick="location.hash='#/'">家庭食谱<span class="sync-dot ok" id="sync-dot"></span></h1>
+      <h1 id="app-title" onclick="location.hash='#/'">家庭食谱<span class="sync-dot ok" id="sync-dot"></span></h1>
       <div class="topbar-actions">
-        <a class="icon-btn" href="index.html">💰 开支</a>
-        <a class="icon-btn" href="shopping.html">🛒 购物</a>
-        <a class="icon-btn" href="activity.html">📅 日程</a>
-        <button class="icon-btn" onclick="lockApp()">锁定</button>
+        <a class="icon-btn" id="nav-expense"  href="index.html">💰 开支</a>
+        <a class="icon-btn" id="nav-shopping" href="shopping.html">🛒 购物</a>
+        <a class="icon-btn" id="nav-activity" href="activity.html">📅 日程</a>
+        <button class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
+        <button class="icon-btn" id="nav-lock" onclick="lockApp()">锁定</button>
       </div>
     </div>
   </header>

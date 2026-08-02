@@ -95,6 +95,17 @@ body {
   font-family: inherit;
 }
 .icon-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+/* 语言切换：沿用 gourmet 的圆角描边按钮，和普通导航项区分开 */
+.lang-btn {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 0.1em; font-weight: 700;
+  padding: 4px 11px; margin: 0 2px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.75); background: transparent; color: #fff;
+  cursor: pointer; transition: background 0.2s, color 0.2s; white-space: nowrap;
+}
+.lang-btn:hover { background: #fff; color: var(--terracotta); }
+@media (max-width: 520px) { .lang-btn { padding: 3px 7px; font-size: 10px; } }
+
 .sync-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   margin-left: 8px; vertical-align: middle; transition: background 0.3s;
@@ -263,6 +274,34 @@ body {
 
 /* ── 表单 ── */
 .form { max-width: 720px; margin: 0 auto; }
+
+/* 语言页签：中文 / EN 各存一份内容，右侧是翻译按钮 */
+.lang-tabs {
+  display: flex; align-items: center; gap: 0;
+  border-bottom: 1px solid var(--line); margin: 18px 0 14px;
+}
+.lang-tab {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px; letter-spacing: 0.08em; font-weight: 700;
+  padding: 9px 18px; border: none; background: none; cursor: pointer;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.lang-tab:hover { color: var(--ink); }
+.lang-tab.on { color: var(--terracotta); border-bottom-color: var(--terracotta); }
+.translate-btn { margin-left: auto; margin-bottom: 6px; }
+.translate-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* 中英共用的字段（标签、图片）单独圈出来，避免误以为要填两遍 */
+.shared-block {
+  border: 1px dashed var(--line); border-radius: 3px;
+  padding: 18px 16px 2px; margin: 30px 0 8px; position: relative;
+}
+.shared-label {
+  position: absolute; top: -9px; left: 14px; background: var(--bg); padding: 0 8px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+}
 .field { margin-bottom: 22px; }
 .field label {
   display: block; font-family: 'JetBrains Mono', ui-monospace, monospace;

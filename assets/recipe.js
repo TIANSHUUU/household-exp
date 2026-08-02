@@ -60,6 +60,16 @@ function matchRecipes(have, recipes, staples, maxMissing) {
   return out;
 }
 
+// 取某个字段的当前语言版本，为空则回退到另一版。
+// 回退而不是留空，是为了让只填了一种语言的食谱在两种模式下都能正常显示——
+// 翻译是渐进的，不该是食谱能不能看的前提。
+function pickField(recipe, field, lang) {
+  const other = lang === 'en' ? 'zh' : 'en';
+  const a = recipe[field + '_' + lang], b = recipe[field + '_' + other];
+  const has = v => v != null && (typeof v === 'string' ? v.trim() !== '' : v.length > 0);
+  return has(a) ? a : (has(b) ? b : (typeof a === 'string' ? '' : []));
+}
+
 // 搜索。返回 {byName, byIngredient}，同一道菜只出现在一组里（菜名优先）。
 function searchRecipes(q, recipes, aliasMap) {
   const raw = String(q == null ? '' : q).trim();
@@ -68,9 +78,11 @@ function searchRecipes(q, recipes, aliasMap) {
   const canon = toCanonical(raw, aliasMap);
   const byName = [], byIngredient = [];
   for (const r of recipes) {
-    if (normKey(r.name).includes(nq)) { byName.push(r); continue; }
+    // 两种语言的菜名都搜——中文界面下搜 "pancake" 也该找得到
+    if (normKey(r.name_zh).includes(nq) || normKey(r.name_en).includes(nq)) { byName.push(r); continue; }
     const keyHit = (r.ingredient_keys || []).some(k => k === canon || normKey(k).includes(nq));
-    const rawHit = (r.ingredients || []).some(i => normKey(i.name).includes(nq));
+    const rawHit = [].concat(r.ingredients_zh || [], r.ingredients_en || [])
+      .some(i => normKey(i.name).includes(nq));
     if (keyHit || rawHit) byIngredient.push(r);
   }
   return { byName: byName, byIngredient: byIngredient };
@@ -86,6 +98,138 @@ function escHtml(s) {
 function $(id) { return document.getElementById(id); }
 function setSync(state) { $('sync-dot').className = 'sync-dot ' + state; }
 
+// ── 界面语言 ──
+// 用 localStorage 而不是 sessionStorage：语言偏好该跨会话保持，登录态不该。
+const LANG_KEY = 'recipe_lang';
+let lang = localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'zh';
+
+const I18N = {
+  zh: {
+    appTitle: '家庭食谱', navExpense: '💰 开支', navShopping: '🛒 购物',
+    navActivity: '📅 日程', navLock: '锁定', langBtn: 'EN',
+    lockSub: '请输入密码以继续', lockBtn: '进入',
+    lockNeedPw: '请输入密码', lockWrongPw: '密码错误，请重试',
+    loading: '正在加载食谱…', loadFailed: '加载失败：{0}',
+    searchPh: '搜索菜名或食材…', fridgeBtn: '🧊 冰箱里有什么', newBtn: '+ 新食谱',
+    tagAll: '全部', groupByName: '菜名含此词 ({0})', groupByIng: '食材含此词 ({0})',
+    emptyNoRecipes: '还没有食谱。<br>点右上角「+ 新食谱」记下第一道菜吧。',
+    emptyNoSearch: '没有找到含「{0}」的食谱。', emptyNoTag: '没有标签为「{0}」的食谱。',
+    backToList: '← 回到列表', secIngredients: '食材', secSteps: '步骤', secGallery: '成品图',
+    noIngredients: '还没记食材。', noSteps: '还没记步骤。',
+    editBtn: '✎ 编辑', deleteBtn: '删除',
+    notFound: '找不到这道菜。', backLink: '回到列表',
+    cancel: '取消', fName: '菜名', fTags: '分类标签', newTagPh: '输入新标签后按回车',
+    fCover: '封面图', upload: '+ 上传', replace: '换一张',
+    fGallery: '成品图（可多张）', addImg: '+ 添加',
+    fIngredients: '食材', ingNamePh: '食材名', ingAmtPh: '用量', addRow: '+ 加一行',
+    ingHint: '打字时会从食材词表补全。词表里没有的会标「新」，保存时自动加进词表。',
+    newFlag: '新', rmRow: '删掉这行',
+    fSteps: '步骤', stepsPh: '一行一步',
+    stepsHint: '一行一步，保存时按行拆开。空行会被忽略。',
+    save: '保存', nameRequired: '菜名不能为空',
+    saveFailed: '保存失败：{0}', uploadFailed: '上传失败：{0}', deleteFailed: '删除失败：{0}',
+    confirmDelete: '确定删除「{0}」？这一步不可撤销。',
+    ideaTitle: '冰箱里有什么',
+    ideaEmpty: '在上面输入你手头有的食材，<br>一样一样加进来，下面会算出你现在能做什么。<br><br>盐、油、酱油这类常备调料默认当你有，不用输。',
+    ideaNoMatch: '这些食材凑不出库里任何一道菜（差 4 样以上的没有列出）。<br>再加几样试试？',
+    bucketNow: '现在就能做 ({0})', bucketBuy: '再买 {0} 样就能做 ({1})',
+    allSet: '食材齐了', chipPhFirst: '输入一样食材，回车加入', chipPhMore: '继续加…',
+    copyBtn: '📋 复制给 Claude 提问', copied: '✓ 已复制',
+    copyHint: '把食谱库和手头食材拼成一段 prompt 复制走，粘到 claude.ai 里问创意建议。用的是你自己的订阅额度，不花 API 钱。',
+    copyFailed: '复制失败，请手动复制：',
+    translateToEn: '🌐 翻译到英文', translateToZh: '🌐 翻译到中文', translating: '翻译中…',
+    tabHint: '两种语言各存一份。只填一边也能用——另一边为空时会自动回退显示已填的那版。',
+    sharedNote: '以下内容中英共用',
+    translateNotReady: '自动翻译还没接通。等 Edge Function 部署好就能用了——现在可以先手填另一个页签。',
+    translateFailed: '翻译失败：{0}',
+    translateEmpty: '当前页签是空的，没有可翻译的内容。',
+  },
+  en: {
+    appTitle: 'Our Recipes', navExpense: '💰 Expenses', navShopping: '🛒 Shopping',
+    navActivity: '📅 Schedule', navLock: 'Lock', langBtn: '中文',
+    lockSub: 'Enter the password to continue', lockBtn: 'Enter',
+    lockNeedPw: 'Password required', lockWrongPw: 'Wrong password, try again',
+    loading: 'Loading recipes…', loadFailed: 'Could not load: {0}',
+    searchPh: 'Search a dish or ingredient…', fridgeBtn: '🧊 What\'s in the fridge', newBtn: '+ New recipe',
+    tagAll: 'All', groupByName: 'Name matches ({0})', groupByIng: 'Ingredient matches ({0})',
+    emptyNoRecipes: 'No recipes yet.<br>Hit “+ New recipe” to write down your first one.',
+    emptyNoSearch: 'Nothing found for “{0}”.', emptyNoTag: 'No recipes tagged “{0}”.',
+    backToList: '← Back to list', secIngredients: 'Ingredients', secSteps: 'Steps', secGallery: 'Photos',
+    noIngredients: 'No ingredients recorded yet.', noSteps: 'No steps recorded yet.',
+    editBtn: '✎ Edit', deleteBtn: 'Delete',
+    notFound: 'This dish no longer exists.', backLink: 'Back to list',
+    cancel: 'Cancel', fName: 'Dish name', fTags: 'Tags', newTagPh: 'Type a new tag, press Enter',
+    fCover: 'Cover photo', upload: '+ Upload', replace: 'Replace',
+    fGallery: 'More photos (optional)', addImg: '+ Add',
+    fIngredients: 'Ingredients', ingNamePh: 'Ingredient', ingAmtPh: 'Amount', addRow: '+ Add a row',
+    ingHint: 'Autocompletes from the shared ingredient list. Anything new is marked “new” and added on save.',
+    newFlag: 'new', rmRow: 'Remove this row',
+    fSteps: 'Steps', stepsPh: 'One step per line',
+    stepsHint: 'One step per line — split on save. Blank lines are ignored.',
+    save: 'Save', nameRequired: 'The dish needs a name',
+    saveFailed: 'Could not save: {0}', uploadFailed: 'Upload failed: {0}', deleteFailed: 'Could not delete: {0}',
+    confirmDelete: 'Delete “{0}”? This cannot be undone.',
+    ideaTitle: 'What\'s in the fridge',
+    ideaEmpty: 'Add what you have on hand, one ingredient at a time.<br>We\'ll work out what you can cook right now.<br><br>Salt, oil, soy sauce and the like are assumed — no need to list them.',
+    ideaNoMatch: 'Nothing in the collection matches (anything needing 4+ extra items is hidden).<br>Try adding a few more?',
+    bucketNow: 'Ready to cook ({0})', bucketBuy: 'Buy {0} more and you can cook ({1})',
+    allSet: 'all set', chipPhFirst: 'Type an ingredient, press Enter', chipPhMore: 'Keep adding…',
+    copyBtn: '📋 Copy a prompt for Claude', copied: '✓ Copied',
+    copyHint: 'Copies your recipe collection plus what you have on hand as a ready-made prompt. Paste it into claude.ai — it uses your own subscription, not paid API credits.',
+    copyFailed: 'Copy failed — here is the text:',
+    translateToEn: '🌐 Translate to English', translateToZh: '🌐 Translate to Chinese', translating: 'Translating…',
+    tabHint: 'Each language is stored separately. Filling in just one is fine — the other falls back to it when empty.',
+    sharedNote: 'Shared across both languages',
+    translateNotReady: 'Auto-translation isn\'t wired up yet. It needs the edge function deployed — for now you can fill the other tab by hand.',
+    translateFailed: 'Translation failed: {0}',
+    translateEmpty: 'This tab is empty — nothing to translate.',
+  },
+};
+
+// {0} {1} 占位符替换。缺 key 时回退中文再回退 key 本身，绝不显示空白。
+function t(k) {
+  const s = I18N[lang][k] != null ? I18N[lang][k] : (I18N.zh[k] != null ? I18N.zh[k] : k);
+  const args = Array.prototype.slice.call(arguments, 1);
+  return args.length ? String(s).replace(/\{(\d)\}/g, (m, i) => args[i] != null ? args[i] : m) : s;
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem(LANG_KEY, l);
+  document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
+  paintChrome();
+  render();
+}
+function toggleLang() { setLang(lang === 'en' ? 'zh' : 'en'); }
+
+// 取食谱字段的当前语言版本（薄封装，回退逻辑在 pickField 里，可被 node 验证）
+function pick(r, field) { return pickField(r, field, lang); }
+
+// 标签翻译：中文 canonical → 当前语言显示名。没有翻译就原样显示。
+function tagLabel(zh) {
+  if (lang !== 'en') return zh;
+  const hit = tagI18n.find(x => x.zh === zh);
+  return hit ? hit.en : zh;
+}
+
+// 顶栏和密码门是写在 HTML 里的静态文案，切语言时要手动刷
+function paintChrome() {
+  const set = (id, txt) => { const e = $(id); if (e) e.textContent = txt; };
+  set('lock-title', t('appTitle'));
+  set('lock-sub', t('lockSub'));
+  set('lock-btn', t('lockBtn'));
+  set('nav-expense', t('navExpense'));
+  set('nav-shopping', t('navShopping'));
+  set('nav-activity', t('navActivity'));
+  set('nav-lock', t('navLock'));
+  set('lang-btn', t('langBtn'));
+  const h1 = $('app-title');
+  if (h1) h1.childNodes[0].nodeValue = t('appTitle');
+  const li = $('lock-input');
+  if (li) li.placeholder = lang === 'en' ? 'password' : '••••••••';
+  document.title = t('appTitle');
+}
+
 // ── 密码门（与其余三页共用 PWD_HASH / SESSION_KEY） ──
 async function sha256(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -93,12 +237,12 @@ async function sha256(s) {
 }
 async function unlock() {
   const inp = $('lock-input'), err = $('lock-error');
-  if (!inp.value) { err.textContent = '请输入密码'; return; }
+  if (!inp.value) { err.textContent = t('lockNeedPw'); return; }
   if (await sha256(inp.value) === PWD_HASH) {
     sessionStorage.setItem(SESSION_KEY, '1');
     enterApp();
   } else {
-    err.textContent = '密码错误，请重试';
+    err.textContent = t('lockWrongPw');
     inp.classList.add('error');
     inp.value = '';
     setTimeout(() => inp.classList.remove('error'), 400);
@@ -165,6 +309,20 @@ async function vocabInsert(rows) {
 }
 async function recipeGetAll() {
   const r = await fetch(`${API}/recipes?select=*&order=id.desc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function tagI18nGetAll() {
+  const r = await fetch(`${API}/tag_i18n?select=zh,en`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function tagI18nInsert(rows) {
+  if (!rows.length) return [];
+  const r = await fetch(`${API}/tag_i18n`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation,resolution=ignore-duplicates' },
+    body: JSON.stringify(rows),
+  });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -243,6 +401,7 @@ async function deleteImage(url) {
 
 // ── 内存状态 ──
 let vocab = [], recipes = [], aliasMap = new Map(), staples = new Set();
+let tagI18n = [];                   // [{zh, en}] 标签翻译表
 let loaded = false;
 let listQuery = '', listTag = '';   // 列表页搜索词 / 选中标签
 let ideaHave = [];                  // 灵感页已选食材（canonical）
@@ -253,37 +412,39 @@ function reindex() {
 }
 
 async function loadAll() {
-  const [v, rs] = await Promise.all([vocabGetAll(), recipeGetAll()]);
-  vocab = v; recipes = rs;
+  const [v, rs, ti] = await Promise.all([vocabGetAll(), recipeGetAll(), tagI18nGetAll()]);
+  vocab = v; recipes = rs; tagI18n = ti;
   reindex();
 }
 
 // 数据签名——只有内容真的变了才重渲染，避免轮询把输入框刷掉
 function dataSig() {
-  return recipes.map(r => r.id + ':' + (r.name || '') + ':' + (r.image_urls || []).length
-    + ':' + (r.ingredient_keys || []).join(',') + ':' + (r.steps || []).length).join('|')
-    + '#' + vocab.length;
+  return recipes.map(r => [r.id, r.name_zh || '', r.name_en || '',
+    (r.image_urls || []).length, (r.ingredient_keys || []).join(','),
+    (r.steps_zh || []).length, (r.steps_en || []).length].join(':')).join('|')
+    + '#' + vocab.length + '#' + tagI18n.length;
 }
 
-// ── 视图（后续任务逐个替换） ──
+// ── 视图 ──
 function allTags() {
   const s = new Set();
-  for (const r of recipes) for (const t of (r.tags || [])) s.add(t);
+  for (const r of recipes) for (const tg of (r.tags || [])) s.add(tg);
   return Array.from(s).sort();
 }
 
 function cardHtml(r, num) {
+  const name = pick(r, 'name');
   const img = r.cover_url
-    ? `<img src="${escHtml(r.cover_url)}" alt="${escHtml(r.name)}" loading="lazy">`
+    ? `<img src="${escHtml(r.cover_url)}" alt="${escHtml(name)}" loading="lazy">`
     : '<div class="noimg">🍽</div>';
-  const tags = (r.tags || []).join(' · ');
+  const tags = (r.tags || []).map(tagLabel).join(' · ');
   return `<a class="card" href="#/r/${r.id}">
     <div class="card-img">${img}</div>
     <div class="card-meta">
       <span class="card-num">№ ${String(num).padStart(2, '0')}</span>
       ${tags ? `<span class="card-tags">${escHtml(tags)}</span>` : ''}
     </div>
-    <h2>${escHtml(r.name)}</h2>
+    <h2>${escHtml(name)}</h2>
   </a>`;
 }
 
@@ -295,35 +456,35 @@ function gridHtml(list, startNum) {
 function renderList() {
   const tags = allTags();
   const tagbar = tags.length ? '<div class="tagbar">' +
-    `<button class="tag-chip${listTag ? '' : ' on'}" onclick="pickTag('')">全部</button>` +
-    tags.map(t => `<button class="tag-chip${listTag === t ? ' on' : ''}" onclick="pickTag('${escHtml(t)}')">${escHtml(t)}</button>`).join('') +
+    `<button class="tag-chip${listTag ? '' : ' on'}" onclick="pickTag('')">${escHtml(t('tagAll'))}</button>` +
+    tags.map(tg => `<button class="tag-chip${listTag === tg ? ' on' : ''}" onclick="pickTag('${escHtml(tg)}')">${escHtml(tagLabel(tg))}</button>`).join('') +
     '</div>' : '';
 
   const toolbar = `<div class="toolbar">
       <div class="search-box">
-        <input id="q" type="text" placeholder="搜索菜名或食材…" value="${escHtml(listQuery)}"
+        <input id="q" type="text" placeholder="${escHtml(t('searchPh'))}" value="${escHtml(listQuery)}"
                oninput="onSearchInput(this.value)" autocomplete="off">
         <div class="suggest hidden" id="q-suggest"></div>
       </div>
-      <a class="btn btn-ghost" href="#/idea">🧊 冰箱里有什么</a>
-      <a class="btn btn-accent" href="#/new">+ 新食谱</a>
+      <a class="btn btn-ghost" href="#/idea">${escHtml(t('fridgeBtn'))}</a>
+      <a class="btn btn-accent" href="#/new">${escHtml(t('newBtn'))}</a>
     </div>`;
 
   let body;
   if (!recipes.length) {
-    body = '<div class="empty">还没有食谱。<br>点右上角「+ 新食谱」记下第一道菜吧。</div>';
+    body = `<div class="empty">${t('emptyNoRecipes')}</div>`;
   } else if (listQuery.trim()) {
     const { byName, byIngredient } = searchRecipes(listQuery, filteredByTag(), aliasMap);
     if (!byName.length && !byIngredient.length) {
-      body = `<div class="empty">没有找到含「${escHtml(listQuery)}」的食谱。</div>`;
+      body = `<div class="empty">${escHtml(t('emptyNoSearch', listQuery))}</div>`;
     } else {
       body = '';
-      if (byName.length) body += `<div class="group-title">菜名含此词 (${byName.length})</div>` + gridHtml(byName, 1);
-      if (byIngredient.length) body += `<div class="group-title">食材含此词 (${byIngredient.length})</div>` + gridHtml(byIngredient, 1);
+      if (byName.length) body += `<div class="group-title">${escHtml(t('groupByName', byName.length))}</div>` + gridHtml(byName, 1);
+      if (byIngredient.length) body += `<div class="group-title">${escHtml(t('groupByIng', byIngredient.length))}</div>` + gridHtml(byIngredient, 1);
     }
   } else {
     const list = filteredByTag();
-    body = list.length ? gridHtml(list, 1) : `<div class="empty">没有标签为「${escHtml(listTag)}」的食谱。</div>`;
+    body = list.length ? gridHtml(list, 1) : `<div class="empty">${escHtml(t('emptyNoTag', tagLabel(listTag)))}</div>`;
   }
 
   $('view').innerHTML = toolbar + tagbar + body;
@@ -334,7 +495,7 @@ function filteredByTag() {
   return recipes.filter(r => (r.tags || []).includes(listTag));
 }
 
-function pickTag(t) { listTag = t; renderList(); }
+function pickTag(tg) { listTag = tg; renderList(); }
 
 function onSearchInput(v) {
   listQuery = v;
@@ -342,14 +503,16 @@ function onSearchInput(v) {
   const nv = normKey(v);
   if (!nv) { box.classList.add('hidden'); renderListKeepFocus(); return; }
   const pool = new Set();
-  for (const r of recipes) if (normKey(r.name).includes(nv)) pool.add(r.name);
+  for (const r of recipes) {
+    for (const n of [r.name_zh, r.name_en]) if (n && normKey(n).includes(nv)) pool.add(n);
+  }
   for (const w of vocab) {
     if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
     for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
   }
   const items = Array.from(pool).slice(0, 8);
   if (!items.length) { box.classList.add('hidden'); renderListKeepFocus(); return; }
-  box.innerHTML = items.map(t => `<div onmousedown="applySuggest('${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.innerHTML = items.map(x => `<div onmousedown="applySuggest('${escHtml(x)}')">${escHtml(x)}</div>`).join('');
   box.classList.remove('hidden');
   renderListKeepFocus(true);
 }
@@ -368,44 +531,48 @@ function renderListKeepFocus(keepSuggest) {
   if (sug) { $('q-suggest').innerHTML = sug; $('q-suggest').classList.remove('hidden'); }
 }
 
-function applySuggest(t) {
-  listQuery = t;
+function applySuggest(x) {
+  listQuery = x;
   $('q-suggest').classList.add('hidden');
   renderList();
 }
+
 function renderDetail(id) {
   const r = recipes.find(x => x.id === id);
-  if (!r) { $('view').innerHTML = '<div class="empty">找不到这道菜。<a href="#/">回到列表</a></div>'; return; }
+  if (!r) { $('view').innerHTML = `<div class="empty">${escHtml(t('notFound'))} <a href="#/">${escHtml(t('backLink'))}</a></div>`; return; }
 
+  const name = pick(r, 'name');
   const cover = r.cover_url
-    ? `<div class="detail-cover"><img src="${escHtml(r.cover_url)}" alt="${escHtml(r.name)}"></div>` : '';
-  const tags = (r.tags || []).join(' · ');
+    ? `<div class="detail-cover"><img src="${escHtml(r.cover_url)}" alt="${escHtml(name)}"></div>` : '';
+  const tags = (r.tags || []).map(tagLabel).join(' · ');
 
-  const ings = (r.ingredients || []).length
-    ? '<ul class="ing-list">' + r.ingredients.map(i =>
+  const ingList = pick(r, 'ingredients');
+  const ings = ingList.length
+    ? '<ul class="ing-list">' + ingList.map(i =>
         `<li><span>${escHtml(i.name)}</span><span class="amt">${escHtml(i.amount || '')}</span></li>`).join('') + '</ul>'
-    : '<div class="hint">还没记食材。</div>';
+    : `<div class="hint">${escHtml(t('noIngredients'))}</div>`;
 
-  const steps = (r.steps || []).length
-    ? '<ol class="step-list">' + r.steps.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ol>'
-    : '<div class="hint">还没记步骤。</div>';
+  const stepList = pick(r, 'steps');
+  const steps = stepList.length
+    ? '<ol class="step-list">' + stepList.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ol>'
+    : `<div class="hint">${escHtml(t('noSteps'))}</div>`;
 
   const gallery = (r.image_urls || []).length
-    ? `<div class="section-title">成品图</div><div class="thumbs">` +
+    ? `<div class="section-title">${escHtml(t('secGallery'))}</div><div class="thumbs">` +
       r.image_urls.map(u => `<img src="${escHtml(u)}" alt="" loading="lazy" onclick="openLightbox('${escHtml(u)}')">`).join('') +
       '</div>' : '';
 
   $('view').innerHTML = `<article class="detail">
-    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">← 回到列表</a>
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">${escHtml(t('backToList'))}</a>
     ${cover}
-    <h1>${escHtml(r.name)}</h1>
+    <h1>${escHtml(name)}</h1>
     ${tags ? `<div class="detail-tags">${escHtml(tags)}</div>` : ''}
-    <div class="section-title">食材</div>${ings}
-    <div class="section-title">步骤</div>${steps}
+    <div class="section-title">${escHtml(t('secIngredients'))}</div>${ings}
+    <div class="section-title">${escHtml(t('secSteps'))}</div>${steps}
     ${gallery}
     <div class="detail-actions">
-      <a class="btn btn-ghost" href="#/edit/${r.id}">✎ 编辑</a>
-      <button class="btn btn-danger" onclick="askDelete(${r.id})">删除</button>
+      <a class="btn btn-ghost" href="#/edit/${r.id}">${escHtml(t('editBtn'))}</a>
+      <button class="btn btn-danger" onclick="askDelete(${r.id})">${escHtml(t('deleteBtn'))}</button>
     </div>
   </article>`;
 }
@@ -413,7 +580,7 @@ function renderDetail(id) {
 async function askDelete(id) {
   const r = recipes.find(x => x.id === id);
   if (!r) return;
-  if (!confirm(`确定删除「${r.name}」？这一步不可撤销。`)) return;
+  if (!confirm(t('confirmDelete', pick(r, 'name')))) return;
   setSync('busy');
   try {
     await recipeDelete(id);
@@ -426,41 +593,70 @@ async function askDelete(id) {
     render();
   } catch (e) {
     setSync('err');
-    alert('删除失败：' + e.message);
+    alert(t('deleteFailed', e.message));
   }
 }
-// 编辑中的草稿。renderEditor 会重建它，之后所有输入改的都是这个对象。
+
+async function initApp() {
+  if (loaded) { render(); return; }
+  $('view').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><div>${escHtml(t('loading'))}</div></div>`;
+  setSync('busy');
+  try {
+    await loadAll();
+    loaded = true;
+    lastSig = dataSig();
+    setSync('ok');
+    render();
+  } catch (e) {
+    setSync('err');
+    $('view').innerHTML = `<div class="empty">${escHtml(t('loadFailed', e.message))}</div>`;
+  }
+}
+
+// ── 编辑器 ──
+// draft 的中英两版各存一份 name/ingredients/steps；tags 和图片是共享的，不分语言。
 let draft = null;
 
+function blankSide() { return { name: '', ingredients: [{ name: '', amount: '' }], steps: '' }; }
 function blankDraft() {
-  return { id: null, name: '', tags: [], cover_url: '', image_urls: [],
-           ingredients: [{ name: '', amount: '' }], steps: '' };
+  return { id: null, tags: [], cover_url: '', image_urls: [],
+           zh: blankSide(), en: blankSide(), tab: lang === 'en' ? 'en' : 'zh' };
 }
+function sideFrom(r, l) {
+  const ings = r['ingredients_' + l] || [];
+  return {
+    name: r['name_' + l] || '',
+    ingredients: ings.length ? ings.map(i => ({ name: i.name, amount: i.amount || '' }))
+                             : [{ name: '', amount: '' }],
+    steps: (r['steps_' + l] || []).join('\n'),
+  };
+}
+function side() { return draft[draft.tab]; }
 
 function renderEditor(id) {
   if (id == null) {
     draft = blankDraft();
   } else {
     const r = recipes.find(x => x.id === id);
-    if (!r) { $('view').innerHTML = '<div class="empty">找不到这道菜。<a href="#/">回到列表</a></div>'; return; }
-    draft = {
-      id: r.id, name: r.name, tags: (r.tags || []).slice(),
-      cover_url: r.cover_url || '', image_urls: (r.image_urls || []).slice(),
-      ingredients: (r.ingredients || []).length ? r.ingredients.map(i => ({ name: i.name, amount: i.amount || '' }))
-                                                : [{ name: '', amount: '' }],
-      steps: (r.steps || []).join('\n'),
-    };
+    if (!r) { $('view').innerHTML = `<div class="empty">${escHtml(t('notFound'))} <a href="#/">${escHtml(t('backLink'))}</a></div>`; return; }
+    draft = { id: r.id, tags: (r.tags || []).slice(),
+              cover_url: r.cover_url || '', image_urls: (r.image_urls || []).slice(),
+              zh: sideFrom(r, 'zh'), en: sideFrom(r, 'en'), tab: lang === 'en' ? 'en' : 'zh' };
   }
   paintEditor();
 }
 
+function switchTab(tb) { draft.tab = tb; paintEditor(); }
+
 function paintEditor() {
+  const s = side();
+  const other = draft.tab === 'zh' ? 'en' : 'zh';
   const known = allTags();
-  const tagChips = known.map(t =>
-    `<button type="button" class="tag-chip${draft.tags.includes(t) ? ' on' : ''}" onclick="toggleDraftTag('${escHtml(t)}')">${escHtml(t)}</button>`
+  const tagChips = known.map(tg =>
+    `<button type="button" class="tag-chip${draft.tags.includes(tg) ? ' on' : ''}" onclick="toggleDraftTag('${escHtml(tg)}')">${escHtml(tagLabel(tg))}</button>`
   ).join('');
-  const extra = draft.tags.filter(t => !known.includes(t)).map(t =>
-    `<button type="button" class="tag-chip on" onclick="toggleDraftTag('${escHtml(t)}')">${escHtml(t)}</button>`
+  const extra = draft.tags.filter(tg => !known.includes(tg)).map(tg =>
+    `<button type="button" class="tag-chip on" onclick="toggleDraftTag('${escHtml(tg)}')">${escHtml(tagLabel(tg))}</button>`
   ).join('');
 
   const cover = draft.cover_url
@@ -470,97 +666,113 @@ function paintEditor() {
     `<div class="img-thumb"><img src="${escHtml(u)}" alt=""><button type="button" onclick="removeGalleryImg(${i})">×</button></div>`
   ).join('');
 
-  const ingRows = draft.ingredients.map((ing, i) => {
+  const ingRows = s.ingredients.map((ing, i) => {
     const isNew = ing.name.trim() && !aliasMap.has(normKey(ing.name));
     return `<div class="ing-row">
       <div class="ing-name">
-        <input type="text" placeholder="食材名" value="${escHtml(ing.name)}"
+        <input type="text" placeholder="${escHtml(t('ingNamePh'))}" value="${escHtml(ing.name)}"
                autocomplete="off"
                oninput="setIng(${i},'name',this.value);ingSuggest(${i},this.value)"
                onfocus="ingSuggest(${i},this.value)"
                onblur="setTimeout(()=>hideIngSuggest(${i}),150)">
-        ${isNew ? '<span class="new-flag">新</span>' : ''}
+        ${isNew ? `<span class="new-flag">${escHtml(t('newFlag'))}</span>` : ''}
         <div class="suggest hidden" id="ing-sug-${i}"></div>
       </div>
-      <input class="ing-amt" type="text" placeholder="用量" value="${escHtml(ing.amount)}"
+      <input class="ing-amt" type="text" placeholder="${escHtml(t('ingAmtPh'))}" value="${escHtml(ing.amount)}"
              oninput="setIng(${i},'amount',this.value)">
-      <button type="button" class="rm" onclick="removeIng(${i})" title="删掉这行">×</button>
+      <button type="button" class="rm" onclick="removeIng(${i})" title="${escHtml(t('rmRow'))}">×</button>
     </div>`;
   }).join('');
 
+  const tabBar = `<div class="lang-tabs">
+      <button type="button" class="lang-tab${draft.tab === 'zh' ? ' on' : ''}" onclick="switchTab('zh')">中文</button>
+      <button type="button" class="lang-tab${draft.tab === 'en' ? ' on' : ''}" onclick="switchTab('en')">EN</button>
+      <button type="button" class="btn btn-ghost btn-sm translate-btn" id="tr-btn" onclick="translateDraft()">
+        ${escHtml(t(other === 'en' ? 'translateToEn' : 'translateToZh'))}
+      </button>
+    </div>`;
+
   $('view').innerHTML = `<form class="form" onsubmit="return saveDraft(event)">
-    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="${draft.id ? '#/r/' + draft.id : '#/'}">← 取消</a>
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="${draft.id ? '#/r/' + draft.id : '#/'}">← ${escHtml(t('cancel'))}</a>
+
+    ${tabBar}
+    <div class="hint" style="margin:-8px 0 18px">${escHtml(t('tabHint'))}</div>
 
     <div class="field">
-      <label>菜名</label>
-      <input type="text" id="f-name" value="${escHtml(draft.name)}" oninput="draft.name=this.value" required>
+      <label>${escHtml(t('fName'))}</label>
+      <input type="text" id="f-name" value="${escHtml(s.name)}" oninput="side().name=this.value">
     </div>
 
     <div class="field">
-      <label>分类标签</label>
-      <div class="tagbar">${tagChips}${extra}</div>
-      <input type="text" id="f-newtag" placeholder="输入新标签后按回车"
-             onkeydown="if(event.key==='Enter'){event.preventDefault();addDraftTag(this.value);this.value='';}">
-    </div>
-
-    <div class="field">
-      <label>封面图</label>
-      <div class="imgs-row">
-        ${cover}
-        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-          ${draft.cover_url ? '换一张' : '+ 上传'}
-          <input type="file" accept="image/*" hidden onchange="pickCover(this)">
-        </label>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>成品图（可多张）</label>
-      <div class="imgs-row">
-        ${gallery}
-        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
-          + 添加
-          <input type="file" accept="image/*" multiple hidden onchange="pickGallery(this)">
-        </label>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>食材</label>
+      <label>${escHtml(t('fIngredients'))}</label>
       ${ingRows}
-      <button type="button" class="btn btn-ghost btn-sm" onclick="addIng()">+ 加一行</button>
-      <div class="hint">打字时会从食材词表补全。词表里没有的会标「新」，保存时自动加进词表。</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addIng()">${escHtml(t('addRow'))}</button>
+      <div class="hint">${escHtml(t('ingHint'))}</div>
     </div>
 
     <div class="field">
-      <label>步骤</label>
-      <textarea id="f-steps" placeholder="一行一步" oninput="draft.steps=this.value">${escHtml(draft.steps)}</textarea>
-      <div class="hint">一行一步，保存时按行拆开。空行会被忽略。</div>
+      <label>${escHtml(t('fSteps'))}</label>
+      <textarea id="f-steps" placeholder="${escHtml(t('stepsPh'))}" oninput="side().steps=this.value">${escHtml(s.steps)}</textarea>
+      <div class="hint">${escHtml(t('stepsHint'))}</div>
+    </div>
+
+    <div class="shared-block">
+      <div class="shared-label">${escHtml(t('sharedNote'))}</div>
+
+      <div class="field">
+        <label>${escHtml(t('fTags'))}</label>
+        <div class="tagbar">${tagChips}${extra}</div>
+        <input type="text" id="f-newtag" placeholder="${escHtml(t('newTagPh'))}"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addDraftTag(this.value);this.value='';}">
+      </div>
+
+      <div class="field">
+        <label>${escHtml(t('fCover'))}</label>
+        <div class="imgs-row">
+          ${cover}
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+            ${escHtml(draft.cover_url ? t('replace') : t('upload'))}
+            <input type="file" accept="image/*" hidden onchange="pickCover(this)">
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>${escHtml(t('fGallery'))}</label>
+        <div class="imgs-row">
+          ${gallery}
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+            ${escHtml(t('addImg'))}
+            <input type="file" accept="image/*" multiple hidden onchange="pickGallery(this)">
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-accent" id="save-btn">保存</button>
-      <a class="btn btn-ghost" href="${draft.id ? '#/r/' + draft.id : '#/'}">取消</a>
+      <button type="submit" class="btn btn-accent" id="save-btn">${escHtml(t('save'))}</button>
+      <a class="btn btn-ghost" href="${draft.id ? '#/r/' + draft.id : '#/'}">${escHtml(t('cancel'))}</a>
     </div>
   </form>`;
 }
 
 // ── 草稿操作 ──
-function toggleDraftTag(t) {
-  const i = draft.tags.indexOf(t);
-  if (i >= 0) draft.tags.splice(i, 1); else draft.tags.push(t);
+function toggleDraftTag(tg) {
+  const i = draft.tags.indexOf(tg);
+  if (i >= 0) draft.tags.splice(i, 1); else draft.tags.push(tg);
   paintEditor();
 }
-function addDraftTag(t) {
-  const v = String(t || '').trim();
+function addDraftTag(tg) {
+  const v = String(tg || '').trim();
   if (v && !draft.tags.includes(v)) draft.tags.push(v);
   paintEditor();
 }
-function setIng(i, field, v) { draft.ingredients[i][field] = v; }
-function addIng() { draft.ingredients.push({ name: '', amount: '' }); paintEditor(); }
+function setIng(i, field, v) { side().ingredients[i][field] = v; }
+function addIng() { side().ingredients.push({ name: '', amount: '' }); paintEditor(); }
 function removeIng(i) {
-  draft.ingredients.splice(i, 1);
-  if (!draft.ingredients.length) draft.ingredients.push({ name: '', amount: '' });
+  const s = side();
+  s.ingredients.splice(i, 1);
+  if (!s.ingredients.length) s.ingredients.push({ name: '', amount: '' });
   paintEditor();
 }
 function removeCover() { draft.cover_url = ''; paintEditor(); }
@@ -572,7 +784,7 @@ async function pickCover(input) {
   try {
     draft.cover_url = await uploadImage(draft.id || 'new', input.files[0]);
     setSync('ok');
-  } catch (e) { setSync('err'); alert('上传失败：' + e.message); }
+  } catch (e) { setSync('err'); alert(t('uploadFailed', e.message)); }
   paintEditor();
 }
 async function pickGallery(input) {
@@ -583,7 +795,7 @@ async function pickGallery(input) {
       draft.image_urls.push(await uploadImage(draft.id || 'new', f));
     }
     setSync('ok');
-  } catch (e) { setSync('err'); alert('上传失败：' + e.message); }
+  } catch (e) { setSync('err'); alert(t('uploadFailed', e.message)); }
   paintEditor();
 }
 
@@ -600,25 +812,31 @@ function ingSuggest(i, v) {
   }
   const items = Array.from(pool).slice(0, 8);
   if (!items.length) { box.classList.add('hidden'); return; }
-  box.innerHTML = items.map(t => `<div onmousedown="applyIngSuggest(${i},'${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.innerHTML = items.map(x => `<div onmousedown="applyIngSuggest(${i},'${escHtml(x)}')">${escHtml(x)}</div>`).join('');
   box.classList.remove('hidden');
 }
 function hideIngSuggest(i) { const b = $('ing-sug-' + i); if (b) b.classList.add('hidden'); }
-function applyIngSuggest(i, t) { draft.ingredients[i].name = t; paintEditor(); }
+function applyIngSuggest(i, x) { side().ingredients[i].name = x; paintEditor(); }
 
 // ── 保存 ──
+// ingredient_keys 从中文版推导；中文版为空（只填了英文）时退回从英文版推导，
+// 靠词表里的英文别名反查 canonical。keys 永远是中文 canonical，匹配逻辑不受语言影响。
+function cleanSide(s) {
+  return {
+    name: s.name.trim(),
+    ingredients: s.ingredients.map(i => ({ name: i.name.trim(), amount: (i.amount || '').trim() }))
+                              .filter(i => i.name),
+    steps: s.steps.split('\n').map(x => x.trim()).filter(Boolean),
+  };
+}
+
 async function saveDraft(ev) {
   ev.preventDefault();
-  const name = draft.name.trim();
-  if (!name) { alert('菜名不能为空'); return false; }
+  const zh = cleanSide(draft.zh), en = cleanSide(draft.en);
+  if (!zh.name && !en.name) { alert(t('nameRequired')); return false; }
 
-  const ings = draft.ingredients
-    .map(i => ({ name: i.name.trim(), amount: (i.amount || '').trim() }))
-    .filter(i => i.name);
-  const keys = Array.from(new Set(ings.map(i => toCanonical(i.name, aliasMap)))).filter(Boolean);
-  const steps = draft.steps.split('\n').map(s => s.trim()).filter(Boolean);
-
-  // 词表里没有的食材，以自身为 canonical 新建一行
+  const keySource = zh.ingredients.length ? zh.ingredients : en.ingredients;
+  const keys = Array.from(new Set(keySource.map(i => toCanonical(i.name, aliasMap)))).filter(Boolean);
   const unknown = keys.filter(k => !aliasMap.has(normKey(k)));
 
   $('save-btn').disabled = true;
@@ -630,9 +848,11 @@ async function saveDraft(ev) {
       reindex();
     }
     const payload = {
-      name: name, tags: draft.tags, cover_url: draft.cover_url || null,
-      image_urls: draft.image_urls, ingredients: ings,
-      ingredient_keys: keys, steps: steps,
+      name_zh: zh.name || null, name_en: en.name || null,
+      ingredients_zh: zh.ingredients, ingredients_en: en.ingredients,
+      steps_zh: zh.steps, steps_en: en.steps,
+      tags: draft.tags, cover_url: draft.cover_url || null, image_urls: draft.image_urls,
+      ingredient_keys: keys,
     };
     let saved;
     if (draft.id) {
@@ -648,22 +868,23 @@ async function saveDraft(ev) {
     render();
   } catch (e) {
     setSync('err');
-    alert('保存失败：' + e.message);
+    alert(t('saveFailed', e.message));
     $('save-btn').disabled = false;
   }
   return false;
 }
+
 function renderIdea() {
   const chips = ideaHave.map((k, i) =>
     `<span class="chip">${escHtml(k)}<button type="button" onclick="removeHave(${i})">×</button></span>`).join('');
 
   let body = '';
   if (!ideaHave.length) {
-    body = '<div class="empty">在上面输入你手头有的食材，<br>一样一样加进来，下面会算出你现在能做什么。<br><br>盐、油、酱油这类常备调料默认当你有，不用输。</div>';
+    body = `<div class="empty">${t('ideaEmpty')}</div>`;
   } else {
     const res = matchRecipes(ideaHave, recipes, staples);
     if (!res.length) {
-      body = '<div class="empty">这些食材凑不出库里任何一道菜（差 4 样以上的没有列出）。<br>再加几样试试？</div>';
+      body = `<div class="empty">${t('ideaNoMatch')}</div>`;
     } else {
       const buckets = new Map();
       for (const it of res) {
@@ -673,23 +894,23 @@ function renderIdea() {
       }
       for (const n of Array.from(buckets.keys()).sort((a, b) => a - b)) {
         const list = buckets.get(n);
-        const title = n === 0 ? `现在就能做 (${list.length})` : `再买 ${n} 样就能做 (${list.length})`;
-        body += `<div class="bucket-title ${n === 0 ? 'bucket-0' : 'bucket-n'}">${title}</div>`;
+        const title = n === 0 ? t('bucketNow', list.length) : t('bucketBuy', n, list.length);
+        body += `<div class="bucket-title ${n === 0 ? 'bucket-0' : 'bucket-n'}">${escHtml(title)}</div>`;
         body += '<ul class="bucket-list">' + list.map(it =>
           `<li>
-             <a href="#/r/${it.recipe.id}">${escHtml(it.recipe.name)}</a>
-             <span class="miss">${n === 0 ? '食材齐了' : '+ ' + it.missing.map(escHtml).join(' + ')}</span>
+             <a href="#/r/${it.recipe.id}">${escHtml(pick(it.recipe, 'name'))}</a>
+             <span class="miss">${n === 0 ? escHtml(t('allSet')) : '+ ' + it.missing.map(escHtml).join(' + ')}</span>
            </li>`).join('') + '</ul>';
       }
     }
   }
 
   $('view').innerHTML = `<div class="detail">
-    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">← 回到列表</a>
-    <h1 style="margin:14px 0 18px">冰箱里有什么</h1>
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">${escHtml(t('backToList'))}</a>
+    <h1 style="margin:14px 0 18px">${escHtml(t('ideaTitle'))}</h1>
     <div class="chip-input" onclick="document.getElementById('have-input').focus()">
       ${chips}
-      <input id="have-input" type="text" placeholder="${ideaHave.length ? '继续加…' : '输入一样食材，回车加入'}"
+      <input id="have-input" type="text" placeholder="${escHtml(ideaHave.length ? t('chipPhMore') : t('chipPhFirst'))}"
              autocomplete="off"
              oninput="haveSuggest(this.value)"
              onkeydown="onHaveKey(event, this)">
@@ -697,9 +918,9 @@ function renderIdea() {
     </div>
     ${body}
     ${ideaHave.length ? `<div class="detail-actions">
-      <button class="btn btn-ghost" id="copy-btn" onclick="copyPrompt()">📋 复制给 Claude 提问</button>
+      <button class="btn btn-ghost" id="copy-btn" onclick="copyPrompt()">${escHtml(t('copyBtn'))}</button>
     </div>
-    <div class="hint">把食谱库和手头食材拼成一段 prompt 复制走，粘到 claude.ai 里问创意建议。用的是你自己的订阅额度，不花 API 钱。</div>` : ''}
+    <div class="hint">${escHtml(t('copyHint'))}</div>` : ''}
   </div>`;
 
   const el = $('have-input');
@@ -732,37 +953,40 @@ function haveSuggest(v) {
     if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
     for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
   }
-  const items = Array.from(pool).filter(t => !ideaHave.includes(t)).slice(0, 8);
+  const items = Array.from(pool).filter(x => !ideaHave.includes(x)).slice(0, 8);
   if (!items.length) { box.classList.add('hidden'); return; }
-  box.innerHTML = items.map(t => `<div onmousedown="addHave('${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.innerHTML = items.map(x => `<div onmousedown="addHave('${escHtml(x)}')">${escHtml(x)}</div>`).join('');
   box.classList.remove('hidden');
-}
-async function initApp() {
-  if (loaded) { render(); return; }
-  $('view').innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>正在加载食谱…</div></div>';
-  setSync('busy');
-  try {
-    await loadAll();
-    loaded = true;
-    lastSig = dataSig();
-    setSync('ok');
-    render();
-  } catch (e) {
-    setSync('err');
-    $('view').innerHTML = '<div class="empty">加载失败：' + escHtml(e.message) + '</div>';
-  }
 }
 
 // 把食谱库 + 手头食材 + 算法结果拼成一段完整 prompt，让用户粘到 claude.ai 里问。
-// 二期上线页面内 AI 之后这个按钮保留作为兜底。
+// 跟随界面语言——中文界面出中文 prompt，英文界面出英文 prompt。
 function buildPrompt() {
   const lib = recipes.map(r =>
-    `- ${r.name}（${(r.ingredient_keys || []).join('、')}）`).join('\n');
+    `- ${pick(r, 'name')}（${(r.ingredient_keys || []).join('、')}）`).join('\n');
+  const libEn = recipes.map(r =>
+    `- ${pick(r, 'name')} (${(r.ingredient_keys || []).join(', ')})`).join('\n');
   const res = matchRecipes(ideaHave, recipes, staples);
-  const doable = res.filter(x => !x.missing.length).map(x => x.recipe.name);
-  const near = res.filter(x => x.missing.length)
-    .map(x => `${x.recipe.name}（还差：${x.missing.join('、')}）`);
+  const doable = res.filter(x => !x.missing.length).map(x => pick(x.recipe, 'name'));
 
+  if (lang === 'en') {
+    const near = res.filter(x => x.missing.length)
+      .map(x => `${pick(x.recipe, 'name')} (missing: ${x.missing.join(', ')})`);
+    return `Here is our family recipe collection:
+${libEn || '(empty so far)'}
+
+I have these ingredients on hand: ${ideaHave.join(', ') || '(none entered)'}
+(Assume salt, oil, soy sauce and other pantry staples are always available.)
+
+I have already worked out:
+- Can cook right now: ${doable.join(', ') || 'none'}
+- Nearly there: ${near.join('; ') || 'none'}
+
+Please suggest some ideas **outside** this collection — what else could I cook with what I have that isn't recorded here? If buying one or two extra things would open up a lot more options, tell me that too.`;
+  }
+
+  const near = res.filter(x => x.missing.length)
+    .map(x => `${pick(x.recipe, 'name')}（还差：${x.missing.join('、')}）`);
   return `这是我们家的食谱库：
 ${lib || '（还是空的）'}
 
@@ -780,13 +1004,17 @@ async function copyPrompt() {
   try {
     await navigator.clipboard.writeText(buildPrompt());
     const b = $('copy-btn');
-    if (b) { const t = b.textContent; b.textContent = '✓ 已复制'; setTimeout(() => { b.textContent = t; }, 1800); }
+    if (b) { const x = b.textContent; b.textContent = t('copied'); setTimeout(() => { b.textContent = x; }, 1800); }
   } catch (e) {
-    alert('复制失败，请手动复制：\n\n' + buildPrompt());
+    alert(t('copyFailed') + '\n\n' + buildPrompt());
   }
 }
 
-// ── 15 秒轮询（只在标签页可见时请求，且只有内容真变了才重渲染） ──
+// ── 自动翻译（C 期接通 Edge Function 后可用）──
+async function translateDraft() {
+  alert(t('translateNotReady'));
+}
+
 let lastSig = '';
 async function poll() {
   if (document.visibilityState !== 'visible') return;
@@ -807,6 +1035,8 @@ setInterval(poll, 15000);
 // ── 启动 ──
 // 必须放在文件最末：上面用 let 声明的 vocab / recipes / loaded 在求值到那一行之前
 // 处于暂时性死区，提前调用 initApp() 会在 `if (loaded)` 上抛 ReferenceError。
+document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+paintChrome();
 if (sessionStorage.getItem(SESSION_KEY) === '1') {
   enterApp();
 } else {

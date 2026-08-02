@@ -28,10 +28,10 @@ const staples = stapleSet([
   { canonical: '盐', aliases: [], staple: true },
 ]);
 const recipes = [
-  { id: 1, name: '番茄炒蛋',   ingredient_keys: ['番茄', '鸡蛋', '盐'] },
-  { id: 2, name: '番茄牛腩',   ingredient_keys: ['番茄', '牛腩', '土豆', '盐'] },
-  { id: 3, name: '牛肉三明治', ingredient_keys: ['牛肉', '面包', '生菜'] },
-  { id: 4, name: '佛跳墙',     ingredient_keys: ['鲍鱼', '海参', '花胶', '瑶柱', '火腿'] },
+  { id: 1, name_zh: '番茄炒蛋',   ingredient_keys: ['番茄', '鸡蛋', '盐'] },
+  { id: 2, name_zh: '番茄牛腩',   ingredient_keys: ['番茄', '牛腩', '土豆', '盐'] },
+  { id: 3, name_zh: '牛肉三明治', ingredient_keys: ['牛肉', '面包', '生菜'] },
+  { id: 4, name_zh: '佛跳墙',     ingredient_keys: ['鲍鱼', '海参', '花胶', '瑶柱', '火腿'] },
 ];
 
 const res = matchRecipes(['番茄', '鸡蛋', '牛腩'], recipes, staples);
@@ -46,8 +46,8 @@ assert.strictEqual(res[2].missing.length, 3);
 
 // 同桶内食材少的排前面
 const tie = matchRecipes([], [
-  { id: 10, name: '多料', ingredient_keys: ['a', 'b', 'c'] },
-  { id: 11, name: '少料', ingredient_keys: ['d'] },
+  { id: 10, name_zh: '多料', ingredient_keys: ['a', 'b', 'c'] },
+  { id: 11, name_zh: '少料', ingredient_keys: ['d'] },
 ], new Set(), 3);
 assert.strictEqual(tie[0].recipe.id, 11, '同桶内 need 少的应排前');
 
@@ -72,3 +72,24 @@ const s4 = searchRecipes('   ', recipes, sm);
 assert.deepStrictEqual(s4, { byName: [], byIngredient: [] }, '空查询应返回两个空数组');
 
 console.log('✅ search OK');
+
+// ── 双语字段回退 ──
+const R = (o) => Object.assign({ name_zh:'', name_en:'', steps_zh:[], steps_en:[] }, o);
+assert.strictEqual(pickField(R({name_zh:'番茄炒蛋', name_en:'Tomato Egg'}), 'name', 'en'), 'Tomato Egg');
+assert.strictEqual(pickField(R({name_zh:'番茄炒蛋', name_en:'Tomato Egg'}), 'name', 'zh'), '番茄炒蛋');
+assert.strictEqual(pickField(R({name_zh:'番茄炒蛋'}), 'name', 'en'), '番茄炒蛋', '英文缺失应回退中文');
+assert.strictEqual(pickField(R({name_en:'Tomato Egg'}), 'name', 'zh'), 'Tomato Egg', '中文缺失应回退英文');
+assert.strictEqual(pickField(R({name_zh:'   '}), 'name', 'zh'), '', '纯空格视为空');
+assert.strictEqual(pickField(R({name_zh:'  ', name_en:'X'}), 'name', 'zh'), 'X', '纯空格应回退');
+assert.deepStrictEqual(pickField(R({steps_zh:['一','二']}), 'steps', 'en'), ['一','二'], '数组也要回退');
+assert.deepStrictEqual(pickField(R({}), 'steps', 'zh'), [], '两版都空返回空数组而非 undefined');
+assert.strictEqual(pickField(R({}), 'name', 'zh'), '', '两版都空返回空串而非 undefined');
+
+// 搜索跨语言：中文界面搜英文名也该命中
+const bm = buildAliasMap([]);
+const br = [{ id:1, name_zh:'番茄炒蛋', name_en:'Tomato & Egg', ingredient_keys:['番茄'], ingredients_zh:[{name:'番茄'}], ingredients_en:[{name:'tomato'}] }];
+assert.strictEqual(searchRecipes('Tomato', br, bm).byName.length, 1, '应能用英文名搜到');
+assert.strictEqual(searchRecipes('番茄炒', br, bm).byName.length, 1, '应能用中文名搜到');
+assert.strictEqual(searchRecipes('tomato', br, bm).byName.length, 1, '大小写不敏感');
+
+console.log('✅ bilingual OK');
