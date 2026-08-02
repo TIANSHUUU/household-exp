@@ -206,7 +206,7 @@ body {
 /* 详情页封面按原比例完整显示——手机拍的菜多是竖构图，固定 16:10 会把主体裁掉一半。
    首页卡片仍用 16:10 裁切保持网格整齐。max-height 防止竖图占满整屏。 */
 .detail-cover {
-  overflow: hidden; background: #EFE9DC; margin-bottom: 22px;
+  overflow: hidden; margin-bottom: 22px;
   display: flex; justify-content: center;
 }
 .detail-cover img {
