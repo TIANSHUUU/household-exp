@@ -737,6 +737,7 @@ async function initApp() {
   try {
     await loadAll();
     loaded = true;
+    lastSig = dataSig();
     setSync('ok');
     render();
   } catch (e) {
@@ -777,6 +778,24 @@ async function copyPrompt() {
     alert('复制失败，请手动复制：\n\n' + buildPrompt());
   }
 }
+
+// ── 15 秒轮询（只在标签页可见时请求，且只有内容真变了才重渲染） ──
+let lastSig = '';
+async function poll() {
+  if (document.visibilityState !== 'visible') return;
+  if (!loaded) return;
+  // 编辑页正在填表，重渲染会把用户输入冲掉——跳过这一轮
+  if (currentRoute().view === 'editor') return;
+  try {
+    await loadAll();
+    const sig = dataSig();
+    if (sig !== lastSig) { lastSig = sig; render(); }
+    setSync('ok');
+  } catch (e) {
+    setSync('err');
+  }
+}
+setInterval(poll, 15000);
 
 // ── 启动 ──
 // 必须放在文件最末：上面用 let 声明的 vocab / recipes / loaded 在求值到那一行之前
