@@ -321,7 +321,44 @@ function applySuggest(t) {
   $('q-suggest').classList.add('hidden');
   renderList();
 }
-function renderDetail() { $('view').innerHTML = '<div class="empty">详情页占位</div>'; }
+function renderDetail(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) { $('view').innerHTML = '<div class="empty">找不到这道菜。<a href="#/">回到列表</a></div>'; return; }
+
+  const cover = r.cover_url
+    ? `<div class="detail-cover"><img src="${escHtml(r.cover_url)}" alt="${escHtml(r.name)}"></div>` : '';
+  const tags = (r.tags || []).join(' · ');
+
+  const ings = (r.ingredients || []).length
+    ? '<ul class="ing-list">' + r.ingredients.map(i =>
+        `<li><span>${escHtml(i.name)}</span><span class="amt">${escHtml(i.amount || '')}</span></li>`).join('') + '</ul>'
+    : '<div class="hint">还没记食材。</div>';
+
+  const steps = (r.steps || []).length
+    ? '<ol class="step-list">' + r.steps.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ol>'
+    : '<div class="hint">还没记步骤。</div>';
+
+  const gallery = (r.image_urls || []).length
+    ? `<div class="section-title">成品图</div><div class="thumbs">` +
+      r.image_urls.map(u => `<img src="${escHtml(u)}" alt="" loading="lazy" onclick="openLightbox('${escHtml(u)}')">`).join('') +
+      '</div>' : '';
+
+  $('view').innerHTML = `<article class="detail">
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">← 回到列表</a>
+    ${cover}
+    <h1>${escHtml(r.name)}</h1>
+    ${tags ? `<div class="detail-tags">${escHtml(tags)}</div>` : ''}
+    <div class="section-title">食材</div>${ings}
+    <div class="section-title">步骤</div>${steps}
+    ${gallery}
+    <div class="detail-actions">
+      <a class="btn btn-ghost" href="#/edit/${r.id}">✎ 编辑</a>
+      <button class="btn btn-danger" onclick="askDelete(${r.id})">删除</button>
+    </div>
+  </article>`;
+}
+
+function askDelete(id) { alert('删除功能在 Task 13 实现'); }
 function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
 function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
 async function initApp() {
