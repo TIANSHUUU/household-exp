@@ -59,4 +59,20 @@ function matchRecipes(have, recipes, staples, maxMissing) {
   );
   return out;
 }
+
+// 搜索。返回 {byName, byIngredient}，同一道菜只出现在一组里（菜名优先）。
+function searchRecipes(q, recipes, aliasMap) {
+  const raw = String(q == null ? '' : q).trim();
+  if (!raw) return { byName: [], byIngredient: [] };
+  const nq = normKey(raw);
+  const canon = toCanonical(raw, aliasMap);
+  const byName = [], byIngredient = [];
+  for (const r of recipes) {
+    if (normKey(r.name).includes(nq)) { byName.push(r); continue; }
+    const keyHit = (r.ingredient_keys || []).some(k => k === canon || normKey(k).includes(nq));
+    const rawHit = (r.ingredients || []).some(i => normKey(i.name).includes(nq));
+    if (keyHit || rawHit) byIngredient.push(r);
+  }
+  return { byName: byName, byIngredient: byIngredient };
+}
 // ── PURE LOGIC END ──
