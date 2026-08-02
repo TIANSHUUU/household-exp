@@ -976,18 +976,11 @@ function render() {
   return renderList();
 }
 window.addEventListener('hashchange', render);
-
-// ── 启动 ──
-if (sessionStorage.getItem(SESSION_KEY) === '1') {
-  enterApp();
-} else {
-  $('lock-input').focus();
-}
 ```
 
-- [ ] **Step 3: Add temporary placeholder renderers so the shell runs**
+- [ ] **Step 3: Add temporary placeholder renderers and the startup trigger**
 
-Append to `assets/recipe.js` (these get replaced in Tasks 8–14):
+Append to `assets/recipe.js` (the renderers get replaced in Tasks 8–14):
 
 ```js
 // ── 视图（后续任务逐个替换） ──
@@ -996,7 +989,19 @@ function renderDetail() { $('view').innerHTML = '<div class="empty">详情页占
 function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
 function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
 function initApp()      { render(); }
+
+// ── 启动 ──
+// 必须放在文件最末：Task 8 会在上面用 let 声明 vocab / recipes / loaded，
+// 在求值到那些行之前它们处于暂时性死区，提前调用 initApp() 会在
+// `if (loaded)` 上抛 ReferenceError —— 页面看起来正常但内容区永远空白。
+if (sessionStorage.getItem(SESSION_KEY) === '1') {
+  enterApp();
+} else {
+  $('lock-input').focus();
+}
 ```
+
+> ⚠️ The startup block must stay the **last** thing in the file for the rest of this plan. Later tasks insert code *above* it, never below.
 
 - [ ] **Step 4: Verify in the browser**
 

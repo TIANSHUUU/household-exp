@@ -148,11 +148,69 @@ function render() {
 }
 window.addEventListener('hashchange', render);
 
-// ── 启动 ──
-if (sessionStorage.getItem(SESSION_KEY) === '1') {
-  enterApp();
-} else {
-  $('lock-input').focus();
+// ── DB 层 ──
+async function vocabGetAll() {
+  const r = await fetch(`${API}/ingredient_vocab?select=*&order=canonical.asc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function vocabInsert(rows) {
+  if (!rows.length) return [];
+  const r = await fetch(`${API}/ingredient_vocab`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(rows),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function recipeGetAll() {
+  const r = await fetch(`${API}/recipes?select=*&order=id.desc`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function recipeInsert(rec) {
+  const r = await fetch(`${API}/recipes`, {
+    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify([rec]),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0];
+}
+async function recipeUpdate(id, patch) {
+  const r = await fetch(`${API}/recipes?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0];
+}
+async function recipeDelete(id) {
+  const r = await fetch(`${API}/recipes?id=eq.${id}`, { method: 'DELETE', headers: H });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+// ── 内存状态 ──
+let vocab = [], recipes = [], aliasMap = new Map(), staples = new Set();
+let loaded = false;
+let listQuery = '', listTag = '';   // 列表页搜索词 / 选中标签
+let ideaHave = [];                  // 灵感页已选食材（canonical）
+
+function reindex() {
+  aliasMap = buildAliasMap(vocab);
+  staples  = stapleSet(vocab);
+}
+
+async function loadAll() {
+  const [v, rs] = await Promise.all([vocabGetAll(), recipeGetAll()]);
+  vocab = v; recipes = rs;
+  reindex();
+}
+
+// 数据签名——只有内容真的变了才重渲染，避免轮询把输入框刷掉
+function dataSig() {
+  return recipes.map(r => r.id + ':' + (r.name || '') + ':' + (r.image_urls || []).length
+    + ':' + (r.ingredient_keys || []).join(',') + ':' + (r.steps || []).length).join('|')
+    + '#' + vocab.length;
 }
 
 // ── 视图（后续任务逐个替换） ──
@@ -160,4 +218,26 @@ function renderList()   { $('view').innerHTML = '<div class="empty">列表页占
 function renderDetail() { $('view').innerHTML = '<div class="empty">详情页占位</div>'; }
 function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
 function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
-function initApp()      { render(); }
+async function initApp() {
+  if (loaded) { render(); return; }
+  $('view').innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>正在加载食谱…</div></div>';
+  setSync('busy');
+  try {
+    await loadAll();
+    loaded = true;
+    setSync('ok');
+    render();
+  } catch (e) {
+    setSync('err');
+    $('view').innerHTML = '<div class="empty">加载失败：' + escHtml(e.message) + '</div>';
+  }
+}
+
+// ── 启动 ──
+// 必须放在文件最末：上面用 let 声明的 vocab / recipes / loaded 在求值到那一行之前
+// 处于暂时性死区，提前调用 initApp() 会在 `if (loaded)` 上抛 ReferenceError。
+if (sessionStorage.getItem(SESSION_KEY) === '1') {
+  enterApp();
+} else {
+  $('lock-input').focus();
+}
