@@ -689,6 +689,10 @@ function renderIdea() {
       <div class="suggest hidden" id="have-suggest"></div>
     </div>
     ${body}
+    ${ideaHave.length ? `<div class="detail-actions">
+      <button class="btn btn-ghost" id="copy-btn" onclick="copyPrompt()">📋 复制给 Claude 提问</button>
+    </div>
+    <div class="hint">把食谱库和手头食材拼成一段 prompt 复制走，粘到 claude.ai 里问创意建议。用的是你自己的订阅额度，不花 API 钱。</div>` : ''}
   </div>`;
 
   const el = $('have-input');
@@ -738,6 +742,39 @@ async function initApp() {
   } catch (e) {
     setSync('err');
     $('view').innerHTML = '<div class="empty">加载失败：' + escHtml(e.message) + '</div>';
+  }
+}
+
+// 把食谱库 + 手头食材 + 算法结果拼成一段完整 prompt，让用户粘到 claude.ai 里问。
+// 二期上线页面内 AI 之后这个按钮保留作为兜底。
+function buildPrompt() {
+  const lib = recipes.map(r =>
+    `- ${r.name}（${(r.ingredient_keys || []).join('、')}）`).join('\n');
+  const res = matchRecipes(ideaHave, recipes, staples);
+  const doable = res.filter(x => !x.missing.length).map(x => x.recipe.name);
+  const near = res.filter(x => x.missing.length)
+    .map(x => `${x.recipe.name}（还差：${x.missing.join('、')}）`);
+
+  return `这是我们家的食谱库：
+${lib || '（还是空的）'}
+
+我手头有这些食材：${ideaHave.join('、') || '（还没填）'}
+（盐、油、酱油这类常备调料默认都有。）
+
+我已经算过了：
+- 现在就能做：${doable.join('、') || '无'}
+- 差一点的：${near.join('；') || '无'}
+
+请给我一些**库外**的创意建议——用我手头这些食材还能做什么这个库里没记录的菜？如果有值得顺手买的一两样东西能大幅打开选择面，也告诉我。`;
+}
+
+async function copyPrompt() {
+  try {
+    await navigator.clipboard.writeText(buildPrompt());
+    const b = $('copy-btn');
+    if (b) { const t = b.textContent; b.textContent = '✓ 已复制'; setTimeout(() => { b.textContent = t; }, 1800); }
+  } catch (e) {
+    alert('复制失败，请手动复制：\n\n' + buildPrompt());
   }
 }
 
