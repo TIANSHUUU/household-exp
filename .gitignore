@@ -1,2 +1,7 @@
 .worktrees/
 .DS_Store
+
+# 食谱录入的源料中转站（原始配方 md + 手机直出原图）。
+# 有意不进版本库：照片母版交给相册备份系统，仓库只放代码。
+# 详见 docs/HANDOFF.md 第五点五节。
+recipe-details/
