@@ -7,6 +7,8 @@ const H       = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type
 
 const PWD_HASH    = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
 const SESSION_KEY = 'hh_auth';
+const PW_KEY      = 'hh_pw';     // 明文密码，只存 sessionStorage，供 Edge Function 鉴权
+const FN_URL      = 'https://mpvsbeghuueffkjdemcr.supabase.co/functions/v1/kitchen-ai';
 
 // ── PURE LOGIC START ──
 // 这一段不碰 DOM、不碰网络，可以被 node 单独 eval 出来跑断言。
@@ -143,6 +145,12 @@ const I18N = {
     translateNotReady: '自动翻译还没接通。等 Edge Function 部署好就能用了——现在可以先手填另一个页签。',
     translateFailed: '翻译失败：{0}',
     translateEmpty: '当前页签是空的，没有可翻译的内容。',
+    pwPrompt: '请再输一次网页密码（翻译功能需要用它验证身份）',
+    pwMissing: '没有密码，无法调用翻译',
+    err_rate_limited: '今天的翻译次数用完了（每天 30 次）。明天再来，或者手填另一个页签。',
+    err_unauthorized: '密码不对，请重试',
+    err_unknown_action: '服务端不认识这个请求',
+    err_provider_error: '翻译服务出错了，稍后再试',
   },
   en: {
     appTitle: 'Our Recipes', navExpense: '💰 Expenses', navShopping: '🛒 Shopping',
@@ -183,6 +191,12 @@ const I18N = {
     translateNotReady: 'Auto-translation isn\'t wired up yet. It needs the edge function deployed — for now you can fill the other tab by hand.',
     translateFailed: 'Translation failed: {0}',
     translateEmpty: 'This tab is empty — nothing to translate.',
+    pwPrompt: 'Enter the site password again (translation needs it to authenticate)',
+    pwMissing: 'No password, cannot translate',
+    err_rate_limited: 'Out of translations for today (30/day). Try tomorrow, or fill the other tab by hand.',
+    err_unauthorized: 'Wrong password, try again',
+    err_unknown_action: 'The server did not recognise this request',
+    err_provider_error: 'The translation service errored — try again shortly',
   },
 };
 
@@ -240,6 +254,7 @@ async function unlock() {
   if (!inp.value) { err.textContent = t('lockNeedPw'); return; }
   if (await sha256(inp.value) === PWD_HASH) {
     sessionStorage.setItem(SESSION_KEY, '1');
+    sessionStorage.setItem(PW_KEY, inp.value);   // Edge Function 鉴权要用
     enterApp();
   } else {
     err.textContent = t('lockWrongPw');
@@ -256,6 +271,7 @@ function enterApp() {
 }
 function lockApp() {
   sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(PW_KEY);
   $('lock-screen').classList.remove('hidden');
   $('app').classList.remove('visible');
   $('lock-input').value = '';
@@ -1010,9 +1026,68 @@ async function copyPrompt() {
   }
 }
 
-// ── 自动翻译（C 期接通 Edge Function 后可用）──
+// ── 自动翻译 ──
+// 从另一个页面解锁跳过来时 sessionStorage 里没有明文密码，补问一次。
+function kitchenPw() {
+  let pw = sessionStorage.getItem(PW_KEY);
+  if (!pw) {
+    pw = prompt(t('pwPrompt'));
+    if (pw) sessionStorage.setItem(PW_KEY, pw);
+  }
+  return pw;
+}
+
+async function callKitchenAI(action, payload) {
+  const pw = kitchenPw();
+  if (!pw) throw new Error(t('pwMissing'));
+  const r = await fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': KEY,
+               'Authorization': 'Bearer ' + KEY, 'x-kitchen-pw': pw },
+    body: JSON.stringify({ action, payload }),
+  });
+  let j = null;
+  try { j = await r.json(); } catch (e) { /* 下面按 HTTP 状态处理 */ }
+  if (j && j.ok) return j.data;
+  const code = (j && j.error) || ('http_' + r.status);
+  if (code === 'unauthorized') sessionStorage.removeItem(PW_KEY);   // 密码错了，下次重问
+  throw new Error(t('err_' + code) !== 'err_' + code ? t('err_' + code)
+                                                    : ((j && j.detail) || code));
+}
+
 async function translateDraft() {
-  alert(t('translateNotReady'));
+  const from = draft.tab, to = from === 'zh' ? 'en' : 'zh';
+  const s = cleanSide(draft[from]);
+  if (!s.name && !s.ingredients.length && !s.steps.length) { alert(t('translateEmpty')); return; }
+
+  const btn = $('tr-btn');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = t('translating');
+  setSync('busy');
+  try {
+    const out = await callKitchenAI('translate', {
+      from, to, recipe: { name: s.name, ingredients: s.ingredients, steps: s.steps, tags: draft.tags },
+    });
+    draft[to] = {
+      name: out.name || '',
+      ingredients: (out.ingredients || []).length ? out.ingredients : [{ name: '', amount: '' }],
+      steps: (out.steps || []).join('\n'),
+    };
+    // 顺手补上标签翻译，下次筛选栏就有英文了
+    const pairs = Object.entries(out.tags || {})
+      .filter(([zh, en]) => zh && en && !tagI18n.some(x => x.zh === zh))
+      .map(([zh, en]) => ({ zh, en }));
+    if (pairs.length) {
+      try { tagI18n = tagI18n.concat(await tagI18nInsert(pairs)); } catch (e) { console.warn('标签翻译写入失败（已忽略）', e); }
+    }
+    setSync('ok');
+    draft.tab = to;          // 翻完直接跳到结果页签，方便立刻校对
+    paintEditor();
+  } catch (e) {
+    setSync('err');
+    alert(t('translateFailed', e.message));
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 let lastSig = '';
