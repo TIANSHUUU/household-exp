@@ -76,3 +76,88 @@ function searchRecipes(q, recipes, aliasMap) {
   return { byName: byName, byIngredient: byIngredient };
 }
 // ── PURE LOGIC END ──
+
+// ── 工具 ──
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function $(id) { return document.getElementById(id); }
+function setSync(state) { $('sync-dot').className = 'sync-dot ' + state; }
+
+// ── 密码门（与其余三页共用 PWD_HASH / SESSION_KEY） ──
+async function sha256(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function unlock() {
+  const inp = $('lock-input'), err = $('lock-error');
+  if (!inp.value) { err.textContent = '请输入密码'; return; }
+  if (await sha256(inp.value) === PWD_HASH) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    enterApp();
+  } else {
+    err.textContent = '密码错误，请重试';
+    inp.classList.add('error');
+    inp.value = '';
+    setTimeout(() => inp.classList.remove('error'), 400);
+  }
+}
+function enterApp() {
+  $('lock-screen').classList.add('hidden');
+  $('app').classList.add('visible');
+  $('lock-error').textContent = '';
+  initApp();
+}
+function lockApp() {
+  sessionStorage.removeItem(SESSION_KEY);
+  $('lock-screen').classList.remove('hidden');
+  $('app').classList.remove('visible');
+  $('lock-input').value = '';
+  $('lock-error').textContent = '';
+}
+
+// ── 灯箱 ──
+function openLightbox(url) {
+  $('lightbox-img').src = url;
+  $('lightbox').classList.remove('hidden');
+}
+function closeLightbox() {
+  $('lightbox').classList.add('hidden');
+  $('lightbox-img').src = '';
+}
+
+// ── 路由 ──
+// #/            列表    #/r/<id>   详情
+// #/new         新建    #/edit/<id> 编辑    #/idea 灵感
+function currentRoute() {
+  const h = (location.hash || '#/').replace(/^#/, '');
+  const m = h.match(/^\/r\/(\d+)$/);       if (m) return { view: 'detail', id: Number(m[1]) };
+  const e = h.match(/^\/edit\/(\d+)$/);    if (e) return { view: 'editor', id: Number(e[1]) };
+  if (h === '/new')  return { view: 'editor', id: null };
+  if (h === '/idea') return { view: 'idea' };
+  return { view: 'list' };
+}
+function render() {
+  const r = currentRoute();
+  if (r.view === 'detail') return renderDetail(r.id);
+  if (r.view === 'editor') return renderEditor(r.id);
+  if (r.view === 'idea')   return renderIdea();
+  return renderList();
+}
+window.addEventListener('hashchange', render);
+
+// ── 启动 ──
+if (sessionStorage.getItem(SESSION_KEY) === '1') {
+  enterApp();
+} else {
+  $('lock-input').focus();
+}
+
+// ── 视图（后续任务逐个替换） ──
+function renderList()   { $('view').innerHTML = '<div class="empty">列表页占位</div>'; }
+function renderDetail() { $('view').innerHTML = '<div class="empty">详情页占位</div>'; }
+function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
+function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
+function initApp()      { render(); }
