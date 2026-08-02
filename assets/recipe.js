@@ -404,7 +404,230 @@ function renderDetail(id) {
 }
 
 function askDelete(id) { alert('删除功能在 Task 13 实现'); }
-function renderEditor() { $('view').innerHTML = '<div class="empty">编辑页占位</div>'; }
+// 编辑中的草稿。renderEditor 会重建它，之后所有输入改的都是这个对象。
+let draft = null;
+
+function blankDraft() {
+  return { id: null, name: '', tags: [], cover_url: '', image_urls: [],
+           ingredients: [{ name: '', amount: '' }], steps: '' };
+}
+
+function renderEditor(id) {
+  if (id == null) {
+    draft = blankDraft();
+  } else {
+    const r = recipes.find(x => x.id === id);
+    if (!r) { $('view').innerHTML = '<div class="empty">找不到这道菜。<a href="#/">回到列表</a></div>'; return; }
+    draft = {
+      id: r.id, name: r.name, tags: (r.tags || []).slice(),
+      cover_url: r.cover_url || '', image_urls: (r.image_urls || []).slice(),
+      ingredients: (r.ingredients || []).length ? r.ingredients.map(i => ({ name: i.name, amount: i.amount || '' }))
+                                                : [{ name: '', amount: '' }],
+      steps: (r.steps || []).join('\n'),
+    };
+  }
+  paintEditor();
+}
+
+function paintEditor() {
+  const known = allTags();
+  const tagChips = known.map(t =>
+    `<button type="button" class="tag-chip${draft.tags.includes(t) ? ' on' : ''}" onclick="toggleDraftTag('${escHtml(t)}')">${escHtml(t)}</button>`
+  ).join('');
+  const extra = draft.tags.filter(t => !known.includes(t)).map(t =>
+    `<button type="button" class="tag-chip on" onclick="toggleDraftTag('${escHtml(t)}')">${escHtml(t)}</button>`
+  ).join('');
+
+  const cover = draft.cover_url
+    ? `<div class="img-thumb"><img src="${escHtml(draft.cover_url)}" alt=""><button type="button" onclick="removeCover()">×</button></div>`
+    : '';
+  const gallery = draft.image_urls.map((u, i) =>
+    `<div class="img-thumb"><img src="${escHtml(u)}" alt=""><button type="button" onclick="removeGalleryImg(${i})">×</button></div>`
+  ).join('');
+
+  const ingRows = draft.ingredients.map((ing, i) => {
+    const isNew = ing.name.trim() && !aliasMap.has(normKey(ing.name));
+    return `<div class="ing-row">
+      <div class="ing-name">
+        <input type="text" placeholder="食材名" value="${escHtml(ing.name)}"
+               autocomplete="off"
+               oninput="setIng(${i},'name',this.value);ingSuggest(${i},this.value)"
+               onfocus="ingSuggest(${i},this.value)"
+               onblur="setTimeout(()=>hideIngSuggest(${i}),150)">
+        ${isNew ? '<span class="new-flag">新</span>' : ''}
+        <div class="suggest hidden" id="ing-sug-${i}"></div>
+      </div>
+      <input class="ing-amt" type="text" placeholder="用量" value="${escHtml(ing.amount)}"
+             oninput="setIng(${i},'amount',this.value)">
+      <button type="button" class="rm" onclick="removeIng(${i})" title="删掉这行">×</button>
+    </div>`;
+  }).join('');
+
+  $('view').innerHTML = `<form class="form" onsubmit="return saveDraft(event)">
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="${draft.id ? '#/r/' + draft.id : '#/'}">← 取消</a>
+
+    <div class="field">
+      <label>菜名</label>
+      <input type="text" id="f-name" value="${escHtml(draft.name)}" oninput="draft.name=this.value" required>
+    </div>
+
+    <div class="field">
+      <label>分类标签</label>
+      <div class="tagbar">${tagChips}${extra}</div>
+      <input type="text" id="f-newtag" placeholder="输入新标签后按回车"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();addDraftTag(this.value);this.value='';}">
+    </div>
+
+    <div class="field">
+      <label>封面图</label>
+      <div class="imgs-row">
+        ${cover}
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          ${draft.cover_url ? '换一张' : '+ 上传'}
+          <input type="file" accept="image/*" hidden onchange="pickCover(this)">
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>成品图（可多张）</label>
+      <div class="imgs-row">
+        ${gallery}
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          + 添加
+          <input type="file" accept="image/*" multiple hidden onchange="pickGallery(this)">
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>食材</label>
+      ${ingRows}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addIng()">+ 加一行</button>
+      <div class="hint">打字时会从食材词表补全。词表里没有的会标「新」，保存时自动加进词表。</div>
+    </div>
+
+    <div class="field">
+      <label>步骤</label>
+      <textarea id="f-steps" placeholder="一行一步" oninput="draft.steps=this.value">${escHtml(draft.steps)}</textarea>
+      <div class="hint">一行一步，保存时按行拆开。空行会被忽略。</div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-accent" id="save-btn">保存</button>
+      <a class="btn btn-ghost" href="${draft.id ? '#/r/' + draft.id : '#/'}">取消</a>
+    </div>
+  </form>`;
+}
+
+// ── 草稿操作 ──
+function toggleDraftTag(t) {
+  const i = draft.tags.indexOf(t);
+  if (i >= 0) draft.tags.splice(i, 1); else draft.tags.push(t);
+  paintEditor();
+}
+function addDraftTag(t) {
+  const v = String(t || '').trim();
+  if (v && !draft.tags.includes(v)) draft.tags.push(v);
+  paintEditor();
+}
+function setIng(i, field, v) { draft.ingredients[i][field] = v; }
+function addIng() { draft.ingredients.push({ name: '', amount: '' }); paintEditor(); }
+function removeIng(i) {
+  draft.ingredients.splice(i, 1);
+  if (!draft.ingredients.length) draft.ingredients.push({ name: '', amount: '' });
+  paintEditor();
+}
+function removeCover() { draft.cover_url = ''; paintEditor(); }
+function removeGalleryImg(i) { draft.image_urls.splice(i, 1); paintEditor(); }
+
+async function pickCover(input) {
+  if (!input.files.length) return;
+  setSync('busy');
+  try {
+    draft.cover_url = await uploadImage(draft.id || 'new', input.files[0]);
+    setSync('ok');
+  } catch (e) { setSync('err'); alert('上传失败：' + e.message); }
+  paintEditor();
+}
+async function pickGallery(input) {
+  if (!input.files.length) return;
+  setSync('busy');
+  try {
+    for (const f of Array.from(input.files)) {
+      draft.image_urls.push(await uploadImage(draft.id || 'new', f));
+    }
+    setSync('ok');
+  } catch (e) { setSync('err'); alert('上传失败：' + e.message); }
+  paintEditor();
+}
+
+// ── 食材自动补全 ──
+function ingSuggest(i, v) {
+  const box = $('ing-sug-' + i);
+  if (!box) return;
+  const nv = normKey(v);
+  if (!nv) { box.classList.add('hidden'); return; }
+  const pool = new Set();
+  for (const w of vocab) {
+    if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
+    for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
+  }
+  const items = Array.from(pool).slice(0, 8);
+  if (!items.length) { box.classList.add('hidden'); return; }
+  box.innerHTML = items.map(t => `<div onmousedown="applyIngSuggest(${i},'${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.classList.remove('hidden');
+}
+function hideIngSuggest(i) { const b = $('ing-sug-' + i); if (b) b.classList.add('hidden'); }
+function applyIngSuggest(i, t) { draft.ingredients[i].name = t; paintEditor(); }
+
+// ── 保存 ──
+async function saveDraft(ev) {
+  ev.preventDefault();
+  const name = draft.name.trim();
+  if (!name) { alert('菜名不能为空'); return false; }
+
+  const ings = draft.ingredients
+    .map(i => ({ name: i.name.trim(), amount: (i.amount || '').trim() }))
+    .filter(i => i.name);
+  const keys = Array.from(new Set(ings.map(i => toCanonical(i.name, aliasMap)))).filter(Boolean);
+  const steps = draft.steps.split('\n').map(s => s.trim()).filter(Boolean);
+
+  // 词表里没有的食材，以自身为 canonical 新建一行
+  const unknown = keys.filter(k => !aliasMap.has(normKey(k)));
+
+  $('save-btn').disabled = true;
+  setSync('busy');
+  try {
+    if (unknown.length) {
+      const added = await vocabInsert(unknown.map(k => ({ canonical: k, aliases: [], staple: false })));
+      vocab = vocab.concat(added);
+      reindex();
+    }
+    const payload = {
+      name: name, tags: draft.tags, cover_url: draft.cover_url || null,
+      image_urls: draft.image_urls, ingredients: ings,
+      ingredient_keys: keys, steps: steps,
+    };
+    let saved;
+    if (draft.id) {
+      saved = await recipeUpdate(draft.id, payload);
+      const i = recipes.findIndex(r => r.id === draft.id);
+      if (i >= 0) recipes[i] = saved;
+    } else {
+      saved = await recipeInsert(payload);
+      recipes.unshift(saved);
+    }
+    setSync('ok');
+    location.hash = '#/r/' + saved.id;
+    render();
+  } catch (e) {
+    setSync('err');
+    alert('保存失败：' + e.message);
+    $('save-btn').disabled = false;
+  }
+  return false;
+}
 function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
 async function initApp() {
   if (loaded) { render(); return; }
