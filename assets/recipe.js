@@ -189,6 +189,51 @@ async function recipeDelete(id) {
   if (!r.ok) throw new Error(await r.text());
 }
 
+// ── 图片 ──
+// 上传前在浏览器压到长边 1600px 的 JPEG，省流量也让页面加载快。
+async function shrinkImage(file, maxEdge, quality) {
+  const cap = maxEdge || 1600, q = quality == null ? 0.85 : quality;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, cap / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return await new Promise(res => canvas.toBlob(res, 'image/jpeg', q));
+}
+
+function randomName() {
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
+}
+
+// 返回公开可读的 URL
+async function uploadImage(folder, file) {
+  const blob = await shrinkImage(file);
+  const path = `recipes/${folder}/${randomName()}`;
+  const r = await fetch(`${STORAGE}/object/${BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'image/jpeg' },
+    body: blob,
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return `${STORAGE}/object/public/${BUCKET}/${path}`;
+}
+
+// 从公开 URL 反推路径并删除。删不掉只记日志，不阻断主流程——
+// 孤儿图片比删不掉食谱好。
+async function deleteImage(url) {
+  const marker = `/object/public/${BUCKET}/`;
+  const i = String(url || '').indexOf(marker);
+  if (i < 0) return;
+  const path = url.slice(i + marker.length);
+  try {
+    await fetch(`${STORAGE}/object/${BUCKET}/${path}`, {
+      method: 'DELETE', headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY },
+    });
+  } catch (e) { console.warn('删除图片失败（已忽略）', path, e); }
+}
+
 // ── 内存状态 ──
 let vocab = [], recipes = [], aliasMap = new Map(), staples = new Set();
 let loaded = false;
