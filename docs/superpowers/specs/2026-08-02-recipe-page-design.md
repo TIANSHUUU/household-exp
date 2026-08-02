@@ -223,7 +223,7 @@ Supabase 的 anon key 印在页面源码里是公开的，所以任何人找到�
 >
 > 另有一个边界情况：用户若从 index/shopping/activity 任一页解锁后跳转过来，`hh_pw` 不存在（那三页的 `unlock()` 只存 `'1'`）。处理方式是首次点 ✨ 时弹一次输入框补录，存进 `sessionStorage` 后续复用。**不修改另外三个页面**，把改动圈在 recipe.html 内。
 
-**硬性花费上限（真正的防线）** —— Edge Function 用 service role key 在 `ai_usage` 表上做当日计数的原子自增，超过 **50 次/天** 直接返回 `{"ok": false, "error": "rate_limited"}`，不调供应商。这样即使门锁被绕过，最坏结果也只是当天的 ✨ 不可用，账单封顶。
+**硬性花费上限（真正的防线）** —— Edge Function 用 service role key 在 `ai_usage` 表上做当日计数的原子自增，超过 **30 次/天** 直接返回 `{"ok": false, "error": "rate_limited"}`，不调供应商。这样即使门锁被绕过，最坏结果也只是当天的 ✨ 不可用，账单封顶。
 
 两道都做，成本都很低。
 
