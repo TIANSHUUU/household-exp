@@ -646,7 +646,86 @@ async function saveDraft(ev) {
   }
   return false;
 }
-function renderIdea()   { $('view').innerHTML = '<div class="empty">灵感页占位</div>'; }
+function renderIdea() {
+  const chips = ideaHave.map((k, i) =>
+    `<span class="chip">${escHtml(k)}<button type="button" onclick="removeHave(${i})">×</button></span>`).join('');
+
+  let body = '';
+  if (!ideaHave.length) {
+    body = '<div class="empty">在上面输入你手头有的食材，<br>一样一样加进来，下面会算出你现在能做什么。<br><br>盐、油、酱油这类常备调料默认当你有，不用输。</div>';
+  } else {
+    const res = matchRecipes(ideaHave, recipes, staples);
+    if (!res.length) {
+      body = '<div class="empty">这些食材凑不出库里任何一道菜（差 4 样以上的没有列出）。<br>再加几样试试？</div>';
+    } else {
+      const buckets = new Map();
+      for (const it of res) {
+        const n = it.missing.length;
+        if (!buckets.has(n)) buckets.set(n, []);
+        buckets.get(n).push(it);
+      }
+      for (const n of Array.from(buckets.keys()).sort((a, b) => a - b)) {
+        const list = buckets.get(n);
+        const title = n === 0 ? `现在就能做 (${list.length})` : `再买 ${n} 样就能做 (${list.length})`;
+        body += `<div class="bucket-title ${n === 0 ? 'bucket-0' : 'bucket-n'}">${title}</div>`;
+        body += '<ul class="bucket-list">' + list.map(it =>
+          `<li>
+             <a href="#/r/${it.recipe.id}">${escHtml(it.recipe.name)}</a>
+             <span class="miss">${n === 0 ? '食材齐了' : '+ ' + it.missing.map(escHtml).join(' + ')}</span>
+           </li>`).join('') + '</ul>';
+      }
+    }
+  }
+
+  $('view').innerHTML = `<div class="detail">
+    <a class="icon-btn" style="color:var(--muted);padding-left:0" href="#/">← 回到列表</a>
+    <h1 style="margin:14px 0 18px">冰箱里有什么</h1>
+    <div class="chip-input" onclick="document.getElementById('have-input').focus()">
+      ${chips}
+      <input id="have-input" type="text" placeholder="${ideaHave.length ? '继续加…' : '输入一样食材，回车加入'}"
+             autocomplete="off"
+             oninput="haveSuggest(this.value)"
+             onkeydown="onHaveKey(event, this)">
+      <div class="suggest hidden" id="have-suggest"></div>
+    </div>
+    ${body}
+  </div>`;
+
+  const el = $('have-input');
+  if (el) el.focus();
+}
+
+function addHave(text) {
+  const k = toCanonical(text, aliasMap);
+  if (k && !ideaHave.includes(k)) ideaHave.push(k);
+  renderIdea();
+}
+function removeHave(i) { ideaHave.splice(i, 1); renderIdea(); }
+
+function onHaveKey(ev, el) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (el.value.trim()) { addHave(el.value); el.value = ''; }
+  } else if (ev.key === 'Backspace' && !el.value && ideaHave.length) {
+    ideaHave.pop(); renderIdea();
+  }
+}
+
+function haveSuggest(v) {
+  const box = $('have-suggest');
+  if (!box) return;
+  const nv = normKey(v);
+  if (!nv) { box.classList.add('hidden'); return; }
+  const pool = new Set();
+  for (const w of vocab) {
+    if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
+    for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
+  }
+  const items = Array.from(pool).filter(t => !ideaHave.includes(t)).slice(0, 8);
+  if (!items.length) { box.classList.add('hidden'); return; }
+  box.innerHTML = items.map(t => `<div onmousedown="addHave('${escHtml(t)}')">${escHtml(t)}</div>`).join('');
+  box.classList.remove('hidden');
+}
 async function initApp() {
   if (loaded) { render(); return; }
   $('view').innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div>正在加载食谱…</div></div>';
