@@ -38,4 +38,25 @@ function toCanonical(text, aliasMap) {
 function stapleSet(vocab) {
   return new Set(vocab.filter(v => v.staple).map(v => v.canonical));
 }
+
+// 分桶匹配。have 是 canonical 数组，staples 是 Set<canonical>。
+// 返回 [{recipe, missing, needCount}]，按「缺得少 → 用料少 → 新的在前」排序。
+// missing 超过 maxMissing（默认 3）的食谱直接剔除，不展示。
+function matchRecipes(have, recipes, staples, maxMissing) {
+  const cap = maxMissing == null ? 3 : maxMissing;
+  const haveSet = new Set(have);
+  const out = [];
+  for (const r of recipes) {
+    const need = (r.ingredient_keys || []).filter(k => !staples.has(k));
+    const missing = need.filter(k => !haveSet.has(k));
+    if (missing.length > cap) continue;
+    out.push({ recipe: r, missing: missing, needCount: need.length });
+  }
+  out.sort((a, b) =>
+    (a.missing.length - b.missing.length) ||
+    (a.needCount - b.needCount) ||
+    (b.recipe.id - a.recipe.id)
+  );
+  return out;
+}
 // ── PURE LOGIC END ──
