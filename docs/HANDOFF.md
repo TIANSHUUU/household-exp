@@ -429,11 +429,18 @@ Storage 的 `recipe-images` 桶：**读继续是公开的**（桶是 public，�
 
 ### 想验证有没有真的锁上
 
+**⚠️ 只看 HTTP 状态码会误判。** 被 RLS 挡住的**读取**返回的是 `200` + 空列表 `[]`，不是 401——数据库的语义是「把你有权看的行给你」，你没权看就是零行，不算错误。只有**写入**才会 401。所以要看条数：
+
 ```bash
-# 只带匿名 key（模拟外人）→ 应该 401
-curl -s -o /dev/null -w '%{http_code}\n' \
-  'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/expenses?select=id' \
-  -H 'apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5'
+K=sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5
+B=https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1
+for t in expenses cycles shopping_lists shopping_items activities recipes ingredient_vocab tag_i18n; do
+  printf '%-18s ' "$t"
+  curl -s -I "$B/$t?select=*" -H "apikey: $K" -H "Authorization: Bearer $K" \
+    -H "Prefer: count=exact" -H "Range: 0-0" | grep -i content-range | tr -d '\r'
+done
 ```
 
-改完 RLS 之后这条必须是 401。**如果它还返回 200，说明有表漏改了策略**，回去核对第九节那条 SQL 的表名列表。
+**每一行都必须是 `*/0`。** 任何一张表出现非零条数，就是那张表漏了策略——回去核对上面 SQL 的表名列表。
+
+2026-08-03 实测：8 张表全部 `*/0`（改之前 `expenses` 是 107），写入全部 401，登录后读回来仍是完整的 107 条。
