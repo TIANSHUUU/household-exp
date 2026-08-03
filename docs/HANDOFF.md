@@ -36,7 +36,7 @@
 
 **双语（A + B）** —— 界面中英切换（82 个文案 key 两边对齐）、内容双语存储、编辑器中文/EN 双页签、缺失自动回退。已上线。
 
-**双语（C）自动翻译** —— 代码全部上线，**但 Edge Function 还没部署**。见第四节待办。
+**双语（C）自动翻译** —— 已全部上线，Edge Function 2026-08-03 部署完成。见第四节。
 
 ### 未做（有意的）
 
@@ -82,13 +82,25 @@ storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名
 
 ---
 
-## 四、待办：部署 Edge Function ⚠️
+## 四、Edge Function（2026-08-03 已部署上线 ✅）
 
-这是唯一卡住的事。**只能由拥有 Supabase 控制台的人做，Claude 会话里做不了。**
+代码：`supabase/functions/kitchen-ai/index.ts`
 
-代码已就位：`supabase/functions/kitchen-ai/index.ts`
+### 怎么重新部署
 
-### 步骤
+**用 CLI，别用控制台界面。** 界面上找函数名输入框那一步在不同版本的 dashboard 里位置不一样，容易卡住；CLI 一条命令搞定，而且 `--no-verify-jwt` 这个关键设置由参数指定，不会点错。
+
+```bash
+npx supabase login                     # 只需一次，会开浏览器授权
+npx supabase functions deploy kitchen-ai \
+  --project-ref mpvsbeghuueffkjdemcr --no-verify-jwt
+```
+
+`WARNING: Docker is not running` 可以无视，部署不需要 Docker。
+
+（这个版本的 CLI **没有** `functions logs` 子命令，想看日志得去控制台。）
+
+### 如果是从零建一个新项目
 
 1. Supabase 控制台 → **Edge Functions** → **Deploy a new function**
 2. 函数名 **`kitchen-ai`**（必须一字不差——前端 `FN_URL` 按这个名字请求）
@@ -104,10 +116,36 @@ storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名
    |---|---|
    | `PROVIDER` | `gemini` |
    | `GEMINI_API_KEY` | 用户在 Google AI Studio 申请的 |
-   | `GEMINI_MODEL` | 可选，默认 `gemini-2.0-flash`。模型名 Google 会变，不对就填这个覆盖，别改代码 |
+   | `GEMINI_MODEL` | 可选，默认 `gemini-flash-latest`。**别填具体版本号**，理由见下 |
 
    `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` 平台自动注入。
    `KITCHEN_PWD_HASH` 不再需要，配了也不读。
+
+### ⚠️ 免费档的模型换代很快，别写死版本号
+
+2026-08-03 部署当天连撞两次：
+
+| 填的模型 | 结果 |
+|---|---|
+| `gemini-2.0-flash`（当时的代码默认值） | **429** — 免费档配额被清零成 0/0，不是"用超了" |
+| `gemini-2.5-flash` | **404** — "no longer available to new users" |
+| `gemini-flash-latest` | ✅ 通 |
+
+所以代码默认值已经改成别名 `gemini-flash-latest`，它跟着 Google 换代走。**填具体版本号等于埋定时炸弹**，几个月后同样会 429 或 404。
+
+猜模型名是浪费时间，直接问 key 能用哪些（key 不回显、不进 shell 历史）：
+
+```bash
+read -rs -p "粘贴 API key: " GK && echo && \
+curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GK" \
+| python3 -c "import sys,json;[print(m['name'].replace('models/','')) for m in json.load(sys.stdin).get('models',[]) if 'generateContent' in m.get('supportedGenerationMethods',[])]"
+```
+
+### ⚠️ 真正的天花板是 Google 的 20 次/天，不是函数里的 30
+
+函数里 `DAILY_CAP = 30`，但免费档 Gemini Flash 的 RPD 是 **20**，而且**和用户自己在 AI Studio / Antigravity 里的用量共享同一个项目配额**。所以先撞墙的是 Google，用户看到的是一段英文 429，而不是 `err_rate_limited` 那句友好提示。
+
+想让提示准确就把 `DAILY_CAP` 调到 20；想彻底分开就在 AI Studio 里新建一个独立项目专门给这个站用。两件都没做，因为哪个更合适取决于用户自己的用量习惯——**先问再改**。
 
 ### 部署后怎么验
 
@@ -145,8 +183,6 @@ curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $TOK" \
 
 然后去网页编辑「Bill 松饼」，点「🌐 翻译到英文」，**人工抽验计量单位和烹饪术语**——prompt 里明确要求数字和单位原样保留（180g 必须还是 180g，不许换算），这是最容易出错的地方。
 
-日限额 30 次/天写死在函数里的 `DAILY_CAP`。
-
 ---
 
 ## 五、待处理问题
@@ -177,8 +213,8 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 **已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080303">
-<script src="assets/recipe.js?v=2026080303"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080304">
+<script src="assets/recipe.js?v=2026080304"></script>
 ```
 
 没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。
@@ -368,7 +404,7 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 
 0. ~~和用户确认数据公开可读这件事~~ ✅ 2026-08-03 完成，换成了 Supabase Auth（第九节）
 1. ~~验证并修复手机端空白~~ ✅ 2026-08-03 完成
-2. **部署 Edge Function**（第四节），部署后实际翻一次「Bill 松饼」并人工校对计量单位
+2. ~~部署 Edge Function~~ ✅ 2026-08-03 完成
 3. 加 `normalize` action，解决别名表不自动长别名的问题
 4. 购物清单联动（原三期）
 5. `suggest` action（✨ 创意建议）

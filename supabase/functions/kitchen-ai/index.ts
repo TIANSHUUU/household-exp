@@ -6,7 +6,7 @@
 // 需要的 secrets：
 //   PROVIDER          gemini | anthropic     （默认 gemini）
 //   GEMINI_API_KEY    Google AI Studio 申请
-//   GEMINI_MODEL      可选，默认 gemini-2.0-flash
+//   GEMINI_MODEL      可选，默认 gemini-flash-latest（别名，跟着 Google 换代走）
 //   ANTHROPIC_API_KEY 备用供应商，暂时可以不填
 //
 // SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 由平台自动注入，不用手动配。
@@ -67,7 +67,10 @@ async function verifyUser(req: Request): Promise<boolean> {
 async function callGemini(system: string, user: string): Promise<string> {
   const key = Deno.env.get('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY 未配置');
-  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-2.0-flash';
+  // 默认用别名而不是具体版本号。免费档的模型换代很快——2026-08-03 实测
+  // gemini-2.0-flash 配额被清零（429）、gemini-2.5-flash 对新账号关闭（404），
+  // 写死版本号等于埋一颗定时炸弹。要钉死某个版本再配 GEMINI_MODEL 覆盖。
+  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
   const r = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
