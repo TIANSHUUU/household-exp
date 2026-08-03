@@ -115,3 +115,29 @@ assert.strictEqual(toCanonical(ingLabel(tomEntry, 'en'), m2), '番茄',
   'EN 页签插入的英文词保存时必须映射回中文 canonical');
 
 console.log('✅ ingredient label OK');
+
+// ── 加进购物清单：挑出清单里还没有的 ──
+const m3 = buildAliasMap([
+  { canonical: '番茄', aliases: ['西红柿', 'tomato'], staple: false },
+  { canonical: '鸡蛋', aliases: ['egg'],             staple: false },
+]);
+
+assert.deepStrictEqual(
+  missingNotInList(['番茄', '鸡蛋'], [], m3), ['番茄', '鸡蛋'], '空清单应全部加入');
+assert.deepStrictEqual(
+  missingNotInList(['番茄', '鸡蛋'], ['牛奶'], m3), ['番茄', '鸡蛋'], '不相干条目不影响');
+assert.deepStrictEqual(
+  missingNotInList(['番茄', '鸡蛋'], ['番茄'], m3), ['鸡蛋'], '同名应跳过');
+// 这条是整个查重的意义所在：只比字符串会重复加一次番茄
+assert.deepStrictEqual(
+  missingNotInList(['番茄', '鸡蛋'], ['tomato'], m3), ['鸡蛋'], '清单里的英文别名也算已有');
+assert.deepStrictEqual(
+  missingNotInList(['番茄'], ['西红柿'], m3), [], '清单里的中文别名也算已有');
+assert.deepStrictEqual(
+  missingNotInList(['番茄', '鸡蛋'], ['tomato', 'EGG '], m3), [], '大小写和空格不影响');
+assert.deepStrictEqual(
+  missingNotInList([], ['番茄'], m3), [], '没有缺料时不加任何东西');
+assert.deepStrictEqual(
+  missingNotInList(['番茄'], null, m3), ['番茄'], '清单为 null 时不应抛错');
+
+console.log('✅ shopping list dedupe OK');

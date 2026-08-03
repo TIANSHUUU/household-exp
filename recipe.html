@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
   <!-- 改了 assets/ 里的文件就把 ?v= 后面的日期序号 bump 一次，否则手机浏览器会一直用缓存的旧版。见 docs/HANDOFF.md 第五节。 -->
-  <link rel="stylesheet" href="assets/recipe.css?v=2026080306">
+  <link rel="stylesheet" href="assets/recipe.css?v=2026080307">
 </head>
 <body>
 
@@ -42,11 +42,19 @@
   <main class="wrap" id="view"></main>
 </div>
 
+<div id="shop-picker" class="picker hidden" onclick="if(event.target===this)closeShopPicker()">
+  <div class="picker-card">
+    <div class="picker-title" id="shop-picker-title"></div>
+    <div class="picker-sub" id="shop-picker-sub"></div>
+    <div id="shop-picker-list"></div>
+  </div>
+</div>
+
 <div id="lightbox" class="lightbox hidden" onclick="closeLightbox()">
   <img id="lightbox-img" alt="">
 </div>
 
-<script src="assets/auth.js?v=2026080306"></script>
-<script src="assets/recipe.js?v=2026080306"></script>
+<script src="assets/auth.js?v=2026080307"></script>
+<script src="assets/recipe.js?v=2026080307"></script>
 </body>
 </html>

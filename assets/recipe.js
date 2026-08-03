@@ -68,17 +68,28 @@ function pickField(recipe, field, lang) {
   return has(a) ? a : (has(b) ? b : (typeof a === 'string' ? '' : []));
 }
 
-// 食材建议在编辑器里显示成哪个词。
-// tab 是**当前编辑的页签**，不是界面语言——决定文字往哪一版里写的是页签。
-// 在 EN 页签插入 canonical 会把中文写进 ingredients_en，英文版食谱就会
-// 显示「盐」。保存时 toCanonical 会把英文别名映射回中文 canonical，
-// 所以显示成英文不影响 ingredient_keys。
-// 没有英文别名的（比如「豆瓣酱」只有拼音别名）就退回 canonical——
-// 显示中文总好过显示不出来。
-function ingLabel(entry, tab) {
-  if (tab !== 'en') return entry.canonical;
+// 食材在界面上显示成哪个词。lang 是**这段文字所处的语境**：编辑器里传
+// 当前页签（决定文字写进哪一版），冰箱页和购物清单传界面语言。
+//
+// 存在的理由：canonical 永远是中文，直接显示会在英文语境下冒出中文。
+// 在 EN 页签它还会更严重——applyIngSuggest 把它写进 ingredients_en，
+// 英文版食谱就真的存了「盐」。
+//
+// 保存时 toCanonical 会把英文别名映射回中文 canonical，所以显示成英文
+// 不影响 ingredient_keys。没有英文别名的（比如「豆瓣酱」只有拼音别名）
+// 退回 canonical——显示中文好过显示不出来。
+function ingLabel(entry, lang) {
+  if (lang !== 'en') return entry.canonical;
   const en = (entry.aliases || []).find(a => !/[一-鿿]/.test(a));
   return en || entry.canonical;
+}
+
+// 从缺料里挑出「这张清单里还没有的」。
+// 两边都过一次 toCanonical 再比：清单里已经有 "tomato" 时再加「番茄」
+// 不该重复，而只比字符串会漏掉——这正是别名表要解决的同一件事。
+function missingNotInList(missing, existingNames, aliasMap) {
+  const have = new Set((existingNames || []).map(n => toCanonical(n, aliasMap)));
+  return (missing || []).filter(k => !have.has(toCanonical(k, aliasMap)));
 }
 
 // 搜索。返回 {byName, byIngredient}，同一道菜只出现在一组里（菜名优先）。
@@ -149,6 +160,11 @@ const I18N = {
     copyBtn: '📋 复制给 Claude 提问', copied: '✓ 已复制',
     copyHint: '把食谱库和手头食材拼成一段 prompt 复制走，粘到 claude.ai 里问创意建议。用的是你自己的订阅额度，不花 API 钱。',
     copyFailed: '复制失败，请手动复制：',
+    shopBtn: '+ 🛒', shopBtnTitle: '把缺的加进购物清单',
+    shopPickTitle: '加到哪张清单？', shopPickSub: '要加：{0}',
+    shopNewList: '+ 新建一张清单', shopNewListPrompt: '新清单叫什么？',
+    shopAdding: '加入中…', shopAdded: '✓ 已加入「{0}」',
+    shopAllThere: '已经都在清单里了', shopFailed: '加入购物清单失败：{0}',
     translateToEn: '🌐 翻译到英文', translateToZh: '🌐 翻译到中文', translating: '翻译中…',
     tabHint: '两种语言各存一份。只填一边也能用——另一边为空时会自动回退显示已填的那版。',
     sharedNote: '以下内容中英共用',
@@ -193,6 +209,11 @@ const I18N = {
     copyBtn: '📋 Copy a prompt for Claude', copied: '✓ Copied',
     copyHint: 'Copies your recipe collection plus what you have on hand as a ready-made prompt. Paste it into claude.ai — it uses your own subscription, not paid API credits.',
     copyFailed: 'Copy failed — here is the text:',
+    shopBtn: '+ 🛒', shopBtnTitle: 'Add what\'s missing to a shopping list',
+    shopPickTitle: 'Add to which list?', shopPickSub: 'Adding: {0}',
+    shopNewList: '+ New list', shopNewListPrompt: 'Name the new list',
+    shopAdding: 'Adding…', shopAdded: '✓ Added to “{0}”',
+    shopAllThere: 'Already all on the list', shopFailed: 'Could not add: {0}',
     translateToEn: '🌐 Translate to English', translateToZh: '🌐 Translate to Chinese', translating: 'Translating…',
     tabHint: 'Each language is stored separately. Filling in just one is fine — the other falls back to it when empty.',
     sharedNote: 'Shared across both languages',
@@ -422,16 +443,54 @@ async function deleteImage(url) {
   } catch (e) { console.warn('删除图片失败（已忽略）', path, e); }
 }
 
+// ── 购物清单（表在购物页，那边的数据层内联在 shopping.html 里没法复用）──
+async function shopListsGet() {
+  const r = await fetch(`${API}/shopping_lists?select=id,name&order=id.asc`, { headers: await H() });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function shopItemsGet(listId) {
+  const r = await fetch(`${API}/shopping_items?select=name,position&list_id=eq.${listId}`, { headers: await H() });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function shopListCreate(name) {
+  const r = await fetch(`${API}/shopping_lists`, {
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
+    body: JSON.stringify([{ name }]),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json())[0];
+}
+async function shopItemsInsert(rows) {
+  const r = await fetch(`${API}/shopping_items`, {
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
+    body: JSON.stringify(rows),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 // ── 内存状态 ──
 let vocab = [], recipes = [], aliasMap = new Map(), staples = new Set();
+let canonMap = new Map();          // canonical → 词表整行，给 ingLabel 查显示词用
 let tagI18n = [];                   // [{zh, en}] 标签翻译表
 let loaded = false;
 let listQuery = '', listTag = '';   // 列表页搜索词 / 选中标签
 let ideaHave = [];                  // 灵感页已选食材（canonical）
+let ideaMatches = [];               // 上次分桶结果，购物清单按钮按 recipe.id 回查缺料
+let shopPending = null;             // { recipeId, missing[] } 正在等你选清单的那一条
 
 function reindex() {
   aliasMap = buildAliasMap(vocab);
   staples  = stapleSet(vocab);
+  canonMap = new Map(vocab.map(v => [v.canonical, v]));
+}
+
+// canonical → 当前界面语言下该显示的词。词表里查不到就原样返回。
+function ingName(canonical) {
+  const e = canonMap.get(canonical);
+  return e ? ingLabel(e, lang) : canonical;
 }
 
 async function loadAll() {
@@ -908,6 +967,7 @@ function renderIdea() {
     body = `<div class="empty">${t('ideaEmpty')}</div>`;
   } else {
     const res = matchRecipes(ideaHave, recipes, staples);
+    ideaMatches = res;          // 购物清单按钮按 recipe.id 回查缺料，见 openShopPicker
     if (!res.length) {
       body = `<div class="empty">${t('ideaNoMatch')}</div>`;
     } else {
@@ -924,7 +984,11 @@ function renderIdea() {
         body += '<ul class="bucket-list">' + list.map(it =>
           `<li>
              <a href="#/r/${it.recipe.id}">${escHtml(pick(it.recipe, 'name'))}</a>
-             <span class="miss">${n === 0 ? escHtml(t('allSet')) : '+ ' + it.missing.map(escHtml).join(' + ')}</span>
+             <span class="miss">${n === 0 ? escHtml(t('allSet'))
+               : '+ ' + it.missing.map(k => escHtml(ingName(k))).join(' + ')}</span>
+             ${n === 0 ? '' : `<button type="button" class="shop-add" id="shop-btn-${it.recipe.id}"
+               title="${escHtml(t('shopBtnTitle'))}"
+               onclick="openShopPicker(${it.recipe.id})">${escHtml(t('shopBtn'))}</button>`}
            </li>`).join('') + '</ul>';
       }
     }
@@ -1032,6 +1096,91 @@ async function copyPrompt() {
     if (b) { const x = b.textContent; b.textContent = t('copied'); setTimeout(() => { b.textContent = x; }, 1800); }
   } catch (e) {
     alert(t('copyFailed') + '\n\n' + buildPrompt());
+  }
+}
+
+// ── 加进购物清单 ──
+// 只在「再买 N 样」的桶里出现——「现在就能做」那桶没东西可买。
+let shopLists = [];                 // 打开选择框时缓存，供回填清单名
+
+async function openShopPicker(recipeId) {
+  const it = ideaMatches.find(m => m.recipe.id === recipeId);
+  if (!it || !it.missing.length) return;
+  shopPending = { recipeId: recipeId, missing: it.missing };
+
+  $('shop-picker-title').textContent = t('shopPickTitle');
+  $('shop-picker-sub').textContent = t('shopPickSub', it.missing.map(ingName).join(lang === 'en' ? ', ' : '、'));
+  const box = $('shop-picker-list');
+  box.innerHTML = `<div class="picker-loading">${escHtml(t('loading'))}</div>`;
+  $('shop-picker').classList.remove('hidden');
+
+  try {
+    shopLists = await shopListsGet();
+    box.innerHTML = shopLists.map(l =>
+      `<button type="button" class="picker-item" onclick="addMissingToList(${l.id})">${escHtml(l.name)}</button>`
+    ).join('') +
+      `<button type="button" class="picker-item picker-new" onclick="addMissingToNewList()">${escHtml(t('shopNewList'))}</button>`;
+  } catch (e) {
+    closeShopPicker();
+    alert(t('shopFailed', e.message));
+  }
+}
+
+function closeShopPicker() {
+  $('shop-picker').classList.add('hidden');
+  shopPending = null;
+}
+
+async function addMissingToNewList() {
+  const name = prompt(t('shopNewListPrompt'));
+  if (!name || !name.trim()) return;
+  try {
+    const list = await shopListCreate(name.trim());
+    shopLists.push(list);
+    await addMissingToList(list.id);
+  } catch (e) {
+    closeShopPicker();
+    alert(t('shopFailed', e.message));
+  }
+}
+
+async function addMissingToList(listId) {
+  if (!shopPending) return;
+  const recipeId = shopPending.recipeId, missing = shopPending.missing;
+  const listName = (shopLists.find(l => Number(l.id) === Number(listId)) || {}).name || '';
+  const btn = $('shop-btn-' + recipeId);
+  const label = btn ? btn.textContent : '';
+  closeShopPicker();
+  if (btn) { btn.disabled = true; btn.textContent = t('shopAdding'); }
+  setSync('busy');
+  try {
+    const existing = await shopItemsGet(listId);
+    // 按 canonical 比，不是按字符串——清单里已有 "tomato" 时再加「番茄」不该重复
+    const todo = missingNotInList(missing, existing.map(x => x.name), aliasMap);
+    let msg;
+    if (!todo.length) {
+      msg = t('shopAllThere');
+    } else {
+      // 接在清单末尾。购物页按 position 排序，不给就会挤到最前面。
+      const base = existing.reduce((mx, x) =>
+        Math.max(mx, x.position == null ? 0 : Number(x.position)), -1) + 1;
+      await shopItemsInsert(todo.map((k, i) =>
+        ({ list_id: listId, name: ingName(k), position: base + i })));
+      msg = t('shopAdded', listName);
+    }
+    setSync('ok');
+    if (btn) {
+      btn.textContent = msg;
+      btn.classList.add('shop-done');
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.textContent = label; btn.disabled = false; btn.classList.remove('shop-done');
+      }, 2500);
+    }
+  } catch (e) {
+    setSync('err');
+    if (btn) { btn.textContent = label; btn.disabled = false; }
+    alert(t('shopFailed', e.message));
   }
 }
 

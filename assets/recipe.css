@@ -376,3 +376,42 @@ body {
 }
 .bucket-list a:hover { color: var(--terracotta); }
 .bucket-list .miss { font-size: 13px; color: var(--muted); text-align: right; }
+
+/* ── 加进购物清单 ── */
+/* 按钮挤在菜名和缺料之间，手机上空间紧张，所以 flex-shrink:0 保证它不被压扁，
+   缺料那段允许换行。 */
+.bucket-list .shop-add {
+  flex-shrink: 0; background: transparent; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 9px; font-size: 12px; font-family: inherit;
+  cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s;
+}
+.bucket-list .shop-add:hover:not(:disabled) { color: var(--terracotta); border-color: var(--terracotta); }
+.bucket-list .shop-add:disabled { cursor: default; }
+.bucket-list .shop-add.shop-done { color: #2E8B57; border-color: #2E8B57; }
+
+.picker {
+  position: fixed; inset: 0; z-index: 9997; background: rgba(19,49,74,0.55);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.picker.hidden { display: none; }
+.picker-card {
+  background: var(--card); border-radius: 16px; padding: 22px 20px 16px;
+  width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(19,49,74,0.25);
+}
+.picker-title {
+  font-family: 'Fraunces', 'Noto Serif SC', Georgia, serif;
+  font-size: 18px; font-weight: 600; color: var(--ink); margin-bottom: 4px;
+}
+.picker-sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+.picker-loading { font-size: 13px; color: var(--muted); padding: 10px 0; }
+.picker-item {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 8px;
+  font-size: 15px; font-family: inherit; color: var(--ink);
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.picker-item:hover { background: #F5EFE3; border-color: var(--terracotta); }
+.picker-new { color: var(--muted); border-style: dashed; }
