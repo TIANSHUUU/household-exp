@@ -68,6 +68,19 @@ function pickField(recipe, field, lang) {
   return has(a) ? a : (has(b) ? b : (typeof a === 'string' ? '' : []));
 }
 
+// 食材建议在编辑器里显示成哪个词。
+// tab 是**当前编辑的页签**，不是界面语言——决定文字往哪一版里写的是页签。
+// 在 EN 页签插入 canonical 会把中文写进 ingredients_en，英文版食谱就会
+// 显示「盐」。保存时 toCanonical 会把英文别名映射回中文 canonical，
+// 所以显示成英文不影响 ingredient_keys。
+// 没有英文别名的（比如「豆瓣酱」只有拼音别名）就退回 canonical——
+// 显示中文总好过显示不出来。
+function ingLabel(entry, tab) {
+  if (tab !== 'en') return entry.canonical;
+  const en = (entry.aliases || []).find(a => !/[一-鿿]/.test(a));
+  return en || entry.canonical;
+}
+
 // 搜索。返回 {byName, byIngredient}，同一道菜只出现在一组里（菜名优先）。
 function searchRecipes(q, recipes, aliasMap) {
   const raw = String(q == null ? '' : q).trim();
@@ -815,12 +828,14 @@ function ingSuggest(i, v) {
   if (!box) return;
   const nv = normKey(v);
   if (!nv) { box.classList.add('hidden'); return; }
-  const pool = new Set();
+  // 按 canonical 去重，但显示成当前页签的语言（见 ingLabel）
+  const pool = new Map();
   for (const w of vocab) {
-    if (normKey(w.canonical).includes(nv)) pool.add(w.canonical);
-    for (const a of (w.aliases || [])) if (normKey(a).includes(nv)) pool.add(w.canonical);
+    const hit = normKey(w.canonical).includes(nv)
+      || (w.aliases || []).some(a => normKey(a).includes(nv));
+    if (hit && !pool.has(w.canonical)) pool.set(w.canonical, ingLabel(w, draft.tab));
   }
-  const items = Array.from(pool).slice(0, 8);
+  const items = Array.from(pool.values()).slice(0, 8);
   if (!items.length) { box.classList.add('hidden'); return; }
   box.innerHTML = items.map(x => `<div onmousedown="applyIngSuggest(${i},'${escHtml(x)}')">${escHtml(x)}</div>`).join('');
   box.classList.remove('hidden');

@@ -93,3 +93,25 @@ assert.strictEqual(searchRecipes('番茄炒', br, bm).byName.length, 1, '应能�
 assert.strictEqual(searchRecipes('tomato', br, bm).byName.length, 1, '大小写不敏感');
 
 console.log('✅ bilingual OK');
+
+// ── 食材建议的显示语言 ──
+// 2026-08-03 的 bug：EN 页签点建议会把 canonical（中文）写进 ingredients_en，
+// 英文版食谱于是显示「盐」。ingLabel 负责按页签挑显示词。
+const saltEntry = { canonical: '盐',     aliases: ['食盐', 'salt'],            staple: true  };
+const tomEntry  = { canonical: '番茄',   aliases: ['西红柿', 'tomato'],        staple: false };
+const dbjEntry  = { canonical: '豆瓣酱', aliases: ['郫县豆瓣'],                staple: false };
+
+assert.strictEqual(ingLabel(saltEntry, 'zh'), '盐',    'zh 页签显示 canonical');
+assert.strictEqual(ingLabel(saltEntry, 'en'), 'salt',  'en 页签显示英文别名');
+assert.strictEqual(ingLabel(tomEntry,  'en'), 'tomato','en 页签跳过中文别名');
+assert.strictEqual(ingLabel(dbjEntry,  'en'), '豆瓣酱','没有英文别名时退回 canonical');
+assert.strictEqual(ingLabel(tomEntry,  undefined), '番茄', '页签缺失按中文处理');
+
+// 显示成英文不能影响机器键——这是这个改动成立的前提
+const m2 = buildAliasMap([saltEntry, tomEntry]);
+assert.strictEqual(toCanonical(ingLabel(saltEntry, 'en'), m2), '盐',
+  'EN 页签插入的英文词保存时必须映射回中文 canonical');
+assert.strictEqual(toCanonical(ingLabel(tomEntry, 'en'), m2), '番茄',
+  'EN 页签插入的英文词保存时必须映射回中文 canonical');
+
+console.log('✅ ingredient label OK');
