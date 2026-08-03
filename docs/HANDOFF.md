@@ -134,11 +134,13 @@ curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $K" \
 
 ## 五、待处理问题
 
-### 🔴 手机端食材/步骤显示空白（未调查）
+### ✅ 手机端食材/步骤显示空白（2026-08-03 已确认并修复）
 
 **症状**：同一条食谱，电脑端正常，手机端封面图、标签、区块标题都在，但菜名、食材、步骤全空（显示「还没记食材。」「还没记步骤。」）。
 
-**我的假设（未验证）**：手机浏览器缓存的还是**旧版 `assets/recipe.js`**。双语改造把 `recipes` 的三列改名了：
+**结论**：缓存假设成立。用户在手机上再次刷新后显示恢复正常，无需其他处理。根治方案已落地——`recipe.html` 的两处资源链接加了 `?v=` 版本号（见下）。
+
+**原因**：手机浏览器缓存的还是**旧版 `assets/recipe.js`**。双语改造把 `recipes` 的三列改名了：
 
 ```
 name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
@@ -155,18 +157,16 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 
 浏览器（尤其手机 Safari）会长期缓存。开发时我一直靠手动加 `?v=<时间戳>` 绕过，但真实用户不会这么做。
 
-**先验证再动手**：让用户在手机上强制刷新（Safari：长按刷新按钮 →「请求桌面网站」再切回，或设置里清网站数据）。如果刷完就好了，假设成立。
-
-**根治方案（推荐）**：给资源链接加版本号，每次改 `assets/` 就手动 bump：
+**已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080201">
-<script src="assets/recipe.js?v=2026080201"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080301">
+<script src="assets/recipe.js?v=2026080301"></script>
 ```
 
-没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，值得在 CLAUDE.md 里也写一条。
+没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。
 
-> 另一个需要排除的可能：如果强刷后仍然空白，去看手机浏览器的 console —— 有可能是某个 ES 语法在旧版 iOS Safari 上不支持（代码里用了可选链、展开、`Object.entries` 等）。但优先验证缓存假设，它更符合「标签正常、名字为空」这个特定组合。
+只有 `recipe.html` 需要管这件事——另外三个页面 CSS/JS 全部内联在 HTML 里，改动随 HTML 一起失效，天然没有这个问题。
 
 ### 🔴 全部数据对公网可读可写（既有问题，非本次引入）
 
@@ -362,7 +362,7 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 ## 八、下一步建议顺序
 
 0. **和用户确认数据公开可读这件事**（第五节 🔴）——这是唯一涉及隐私的问题，值得先摆到台面上，即使结论是「接受现状」
-1. **验证并修复手机端空白**（第五节，先让用户强刷确认假设，再给资源链接加版本号）
+1. ~~验证并修复手机端空白~~ ✅ 2026-08-03 完成
 2. **部署 Edge Function**（第四节），部署后实际翻一次「Bill 松饼」并人工校对计量单位
 3. 加 `normalize` action，解决别名表不自动长别名的问题
 4. 购物清单联动（原三期）
