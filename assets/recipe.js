@@ -139,7 +139,6 @@ const I18N = {
     translateToEn: '🌐 翻译到英文', translateToZh: '🌐 翻译到中文', translating: '翻译中…',
     tabHint: '两种语言各存一份。只填一边也能用——另一边为空时会自动回退显示已填的那版。',
     sharedNote: '以下内容中英共用',
-    translateNotReady: '自动翻译还没接通。等 Edge Function 部署好就能用了——现在可以先手填另一个页签。',
     translateFailed: '翻译失败：{0}',
     translateEmpty: '当前页签是空的，没有可翻译的内容。',
     err_rate_limited: '今天的翻译次数用完了（每天 30 次）。明天再来，或者手填另一个页签。',
@@ -184,7 +183,6 @@ const I18N = {
     translateToEn: '🌐 Translate to English', translateToZh: '🌐 Translate to Chinese', translating: 'Translating…',
     tabHint: 'Each language is stored separately. Filling in just one is fine — the other falls back to it when empty.',
     sharedNote: 'Shared across both languages',
-    translateNotReady: 'Auto-translation isn\'t wired up yet. It needs the edge function deployed — for now you can fill the other tab by hand.',
     translateFailed: 'Translation failed: {0}',
     translateEmpty: 'This tab is empty — nothing to translate.',
     err_rate_limited: 'Out of translations for today (30/day). Try tomorrow, or fill the other tab by hand.',
@@ -1023,8 +1021,8 @@ async function copyPrompt() {
 }
 
 // ── 自动翻译 ──
-// 鉴权和数据库请求走同一套令牌：函数开着 Verify JWT，Supabase 在函数跑起来
-// 之前就把令牌验掉了，所以函数内部不用再比密码。
+// 鉴权和数据库请求走同一套令牌：函数拿它去问 /auth/v1/user，验过才干活。
+// （Verify JWT 是关的，原因见 supabase/functions/kitchen-ai/index.ts 顶部注释。）
 async function callKitchenAI(action, payload) {
   const r = await fetch(FN_URL, {
     method: 'POST',
@@ -1036,8 +1034,12 @@ async function callKitchenAI(action, payload) {
   if (j && j.ok) return j.data;
   const code = (j && j.error) || ('http_' + r.status);
   if (r.status === 401) lockApp();     // 令牌失效，回登录页
-  throw new Error(t('err_' + code) !== 'err_' + code ? t('err_' + code)
-                                                    : ((j && j.detail) || code));
+
+  // 友好文案 + 原始详情一起抛。只给友好文案会把「Gemini 404: 模型不存在」
+  // 这种唯一有用的信息吞掉，然后只能干瞪眼——2026-08-03 部署时就踩了。
+  const known = t('err_' + code);
+  const msg = known !== 'err_' + code ? known : code;
+  throw new Error(msg + (j && j.detail ? '\n\n' + j.detail : ''));
 }
 
 async function translateDraft() {
