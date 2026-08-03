@@ -76,6 +76,9 @@ function refreshTok() {
   return refreshing.finally(() => { refreshing = null; });
 }
 
+// 各页面的 lockApp() 调用：退出登录。
+function signOut() { clearTok(); }
+
 // 页面打开时调用：本地有令牌就续一次。返回 true 表示可以直接进 app。
 async function resumeSession() {
   if (!loadTok()) return false;

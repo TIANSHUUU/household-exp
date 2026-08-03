@@ -20,7 +20,7 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 四个页面都引了 `assets/auth.js`，`recipe.html` 另外还引了 `recipe.css` / `recipe.js`：
 
 ```html
-<script src="assets/auth.js?v=2026080302"></script>
+<script src="assets/auth.js?v=2026080303"></script>
 ```
 
 **改了 `assets/` 里任何文件，就要把引用它的页面的 `?v=` 一起 bump。** 格式是 `年月日+两位序号`，同一天改多次就 `01`→`02`。
@@ -35,3 +35,13 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 - 唯一的自动化验证是 `node scripts/verify-recipe-logic.js`（跑 `assets/recipe.js` 里 PURE LOGIC 段的断言），必须从仓库根目录跑。
 - 建表、建 bucket、部署 Edge Function、改 RLS 策略都得用户在 Supabase 控制台自己操作，会话里没权限。SQL 和代码可以给现成的。
 - **仓库是公开的**，不要提交任何含个人信息的文件（包括真实邮箱地址）。
+
+## 改完跑这三个检查
+
+```bash
+node scripts/verify-recipe-logic.js    # recipe.js 的 PURE LOGIC 段断言
+python3 scripts/verify-refs.py         # 有没有「调用了但没定义」的函数（跨文件断裂）
+node -e 'new Function(require("fs").readFileSync("assets/auth.js","utf8"));console.log("ok")'
+```
+
+`verify-refs.py` 会有注释和文案造成的误报，逐个 grep 确认，别无脑信也别无脑忽略。
