@@ -215,8 +215,8 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 **已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080308">
-<script src="assets/recipe.js?v=2026080308"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080310">
+<script src="assets/recipe.js?v=2026080310"></script>
 ```
 
 没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。

@@ -62,10 +62,14 @@
 - 不改购物清单页。它不需要知道条目从哪来。
 - 不记录「这条是从哪道菜加的」。多一个字段换一点点信息，划不来。
 
-## 顺带发现的既有 bug（未修）
+## 顺带发现的既有 bug（当天已修）
 
 **英文界面在手机上横向溢出 110px**，中文界面正好不溢出。原因是顶栏导航：`💰 Expenses / 🛒 Shopping / 📅 Schedule / 中文 / Lock` 共 335px，而视口 375px。`@media (max-width: 520px)` 已经缩了字号和内边距，但英文单词本身就比中文的「开支/购物/日程」长一倍。
 
 和本次改动无关（2026-08-02 双语改造时就存在），实测有没有 `+ 🛒` 按钮溢出量都是 110px。
 
-修法要动 `paintChrome`：把 emoji 和文字拆成两个 span，窄屏时只留 emoji。没做，因为不在本次范围内。
+**修法**：`paintChrome` 把三个导航项拆成 `<span class="nav-icon">💰</span><span class="nav-text">Expenses</span>`，CSS 在 ≤520px 时 `html[lang="en"] .nav-text { display: none }`，只留 emoji。
+
+只对英文生效是有意的——中文标签放得下，没必要跟着一起砍。判据用 `html[lang]` 属性，它由 `setLang()` 维护，切换语言时会同步更新。
+
+实测 375px：中文顶栏 234px 溢出 0（标签完整），英文 171px 溢出 0（只剩 💰🛒📅 + Lock）。「锁定/Lock」没有 emoji 所以不拆，Lock 本身够短。

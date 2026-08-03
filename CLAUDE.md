@@ -20,7 +20,7 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 四个页面都引了 `assets/auth.js`，`recipe.html` 另外还引了 `recipe.css` / `recipe.js`：
 
 ```html
-<script src="assets/auth.js?v=2026080308"></script>
+<script src="assets/auth.js?v=2026080310"></script>
 ```
 
 **改了 `assets/` 里任何文件，就要把引用它的页面的 `?v=` 一起 bump。** 格式是 `年月日+两位序号`，同一天改多次就 `01`→`02`。

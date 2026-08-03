@@ -258,10 +258,21 @@ function paintChrome() {
   set('lock-title', t('appTitle'));
   set('lock-sub', t('lockSub'));
   set('lock-btn', t('lockBtn'));
-  set('nav-expense', t('navExpense'));
-  set('nav-shopping', t('navShopping'));
-  set('nav-activity', t('navActivity'));
-  set('nav-lock', t('navLock'));
+  // 三个跳转按钮拆成 emoji + 文字两段，好让窄屏 CSS 只留 emoji。
+  // 英文标签（Expenses/Shopping/Schedule）比中文的（开支/购物/日程）长一倍，
+  // 不拆的话 375px 手机上顶栏会撑到 485px，整页横向滚动。
+  const setNav = (id, txt) => {
+    const e = $(id); if (!e) return;
+    const i = txt.indexOf(' ');
+    e.innerHTML = i > 0
+      ? `<span class="nav-icon">${escHtml(txt.slice(0, i))}</span>` +
+        `<span class="nav-text">${escHtml(txt.slice(i + 1))}</span>`
+      : escHtml(txt);
+  };
+  setNav('nav-expense', t('navExpense'));
+  setNav('nav-shopping', t('navShopping'));
+  setNav('nav-activity', t('navActivity'));
+  set('nav-lock', t('navLock'));            // 「锁定」/「Lock」没有 emoji，不用拆
   set('lang-btn', t('langBtn'));
   const h1 = $('app-title');
   if (h1) h1.childNodes[0].nodeValue = t('appTitle');
