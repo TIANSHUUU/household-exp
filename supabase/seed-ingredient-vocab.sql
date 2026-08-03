@@ -50,7 +50,7 @@ insert into public.ingredient_vocab (canonical, aliases, staple) values
   ('芥末', array['mustard', 'dijon mustard']::text[], false),
   ('蛋黄酱', array['美乃滋', 'mayonnaise', 'mayo']::text[], false),
   ('黑蒜酱', array['black garlic sauce']::text[], false),
-  ('鸡精', array['味精', 'chicken powder', 'msg']::text[], true),
+  ('鸡精', array['味精', 'chicken powder', 'msg']::text[], false),
   ('高汤', array['鸡汤', '骨汤', 'stock', 'broth']::text[], false),
   ('香草精', array['vanilla extract', 'vanilla']::text[], false),
   ('酵母', array['yeast']::text[], false),
