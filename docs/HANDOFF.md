@@ -93,8 +93,11 @@ storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名
 1. Supabase 控制台 → **Edge Functions** → **Deploy a new function**
 2. 函数名 **`kitchen-ai`**（必须一字不差——前端 `FN_URL` 按这个名字请求）
 3. 贴入 `supabase/functions/kitchen-ai/index.ts` 全部内容（`pbcopy < supabase/functions/kitchen-ai/index.ts`）
-4. **打开 Verify JWT** ⚠️ ——2026-08-03 上了 Supabase Auth 之后，前端带的是登录换来的 access_token，是真 JWT，平台会在函数跑起来之前验掉。函数内部因此**没有任何密码校验**，关掉 Verify JWT 等于把它对全世界敞开，谁都能烧你的 API 额度。
-   （旧文档说"必须关掉"，那是 `sb_publishable_` 当鉴权凭证时代的事，已经不适用。）
+4. **关掉 Verify JWT** ⚠️ ——但理由和 2026-08-02 的旧版文档不一样，别照旧理由推断。
+
+   **不能开的原因是 CORS 预检。** 网页在 `tianshuuu.github.io`，函数在 `supabase.co`，跨域；浏览器发正式请求前会先发一个 `OPTIONS` 预检，而**预检按规范不带 `Authorization` 头**。平台的 JWT 检查在函数之前执行，预检直接吃 401，浏览器判定跨域失败，正式请求根本不会发出去。函数里那行 `if (req.method === 'OPTIONS')` 救不了——请求到不了那儿。
+
+   **鉴权没有丢**，只是搬进了函数：`verifyUser()` 拿 Bearer 令牌去问 `/auth/v1/user`，200 才放行。匿名 key 也长得像 Bearer 令牌，但它不是用户令牌，问出来会被拒。验不过一律 401，配置缺失也算验不过（失败即关门）。
 5. 配 secrets：
 
    | 名称 | 值 |
@@ -118,9 +121,17 @@ TOK=$(curl -s -X POST "https://mpvsbeghuueffkjdemcr.supabase.co/auth/v1/token?gr
   -d '{"email":"home@household.local","password":"<网页密码>"}' \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
 
-# 1. 只带匿名 key（没登录）→ 应 401，平台层就挡掉了
+# 1. 只带匿名 key（没登录）→ 应 401 unauthorized
 curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $K" \
   -H "Content-Type: application/json" -d '{"action":"translate","payload":{}}'
+
+# 1b. CORS 预检 → 必须 200。这条是 Verify JWT 有没有误开的试金石：
+#     开着的话这里会 401，浏览器里整个翻译功能就用不了，但 curl 测正式
+#     请求却一切正常——很容易查半天。
+curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS "$FN" \
+  -H "Origin: https://tianshuuu.github.io" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: authorization, apikey, content-type"
 
 # 2. 带令牌 + 错误 action → 应 400 unknown_action
 curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $TOK" \

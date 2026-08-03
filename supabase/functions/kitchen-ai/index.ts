@@ -11,9 +11,16 @@
 //
 // SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 由平台自动注入，不用手动配。
 //
-// 鉴权：**部署时把 Verify JWT 打开**。前端带的是登录后拿到的 access_token，
-// 是真 JWT，Supabase 在函数跑起来之前就验掉了——所以这里没有任何密码校验，
-// 也不该有。Verify JWT 关掉 = 这个函数对全世界敞开，谁都能烧你的 API 额度。
+// 鉴权：**部署时把 Verify JWT 关掉**，函数自己验（见 verifyUser）。
+//
+// 为什么不用平台的 Verify JWT——它会连浏览器的 CORS 预检一起拦掉。网页在
+// tianshuuu.github.io，函数在 supabase.co，跨域；浏览器发正式请求前先发一个
+// OPTIONS 预检探路，而**预检按规范不带 Authorization 头**。平台的 JWT 检查在
+// 函数之前执行，预检拿 401，浏览器就判定跨域失败，正式请求根本不会发出去。
+// 下面第一行的 OPTIONS 处理救不了——请求到不了这儿。
+//
+// 所以鉴权放在函数里：拿到 Bearer 令牌后问一次 auth 服务「这是谁」，验不过
+// 就 401。匿名 key 也长得像 Bearer 令牌，但它不是用户令牌，问出来会被拒。
 
 const DAILY_CAP = 30;
 
@@ -31,6 +38,28 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   };
+}
+
+// ── 鉴权 ──
+// 令牌拿去问 auth 服务，200 才算数。**验不过一律拒绝**——和下面的日限额
+// 相反，那个拿不到环境变量时选择放行（宁可多花几次额度也别误伤用户），
+// 这个必须失败即关门，否则配置一出问题就等于没有鉴权。
+async function verifyUser(req: Request): Promise<boolean> {
+  const auth = req.headers.get('Authorization') || '';
+  if (!auth.startsWith('Bearer ')) return false;
+
+  const url = Deno.env.get('SUPABASE_URL');
+  const svc = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !svc) return false;
+
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, {
+      headers: { Authorization: auth, apikey: svc },
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ── 供应商适配器：同一个签名，换供应商不影响调用方 ──
@@ -162,7 +191,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
 
-  // 这里不做鉴权：Verify JWT 打开时，没带有效令牌的请求根本到不了这一行。
+  // 注意顺序：OPTIONS 预检必须在鉴权之前放行，它按规范不带 Authorization。
+  if (!await verifyUser(req)) return json({ ok: false, error: 'unauthorized' }, 401);
+
   let body: any;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'bad_json' }, 400); }
   if (body?.action !== 'translate') return json({ ok: false, error: 'unknown_action' }, 400);
