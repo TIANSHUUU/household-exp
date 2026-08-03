@@ -425,7 +425,20 @@ create policy authed_all on public.<表名> for all to authenticated using (true
 
 `to authenticated` 是关键——没登录的请求走 `anon` 角色，没有任何策略匹配，直接拒绝。`ai_usage` 故意没有策略：只有 Edge Function 用 service role 访问，service role 绕过 RLS。
 
-Storage 的 `recipe-images` 桶：**读继续是公开的**（桶是 public，图片走 CDN 不查策略，所以 `<img src>` 照常工作），写和删要求登录。
+Storage 的 `recipe-images` 桶原来有三条 `{public}` 策略（read / insert / delete），2026-08-03 合并成一条：
+
+```sql
+create policy "recipe images authed" on storage.objects
+  for all to authenticated
+  using      (bucket_id = 'recipe-images')
+  with check (bucket_id = 'recipe-images');
+```
+
+**桶本身仍然是 public，这是有意的。** 公开桶的 `/object/public/...` 端点根本不查策略——实测不带任何 key 也能下到图，所以 `<img src>` 照常工作。把 SELECT 收成 `authenticated` 影响的只是**列目录**（`/object/list/...`），不是显示。
+
+所以这条策略挡住的是：匿名上传、匿名删除、以及枚举文件名。**挡不住的是**：已经拿到某张图 URL 的人还能看那张图。文件名是随机生成的（`randomName()`），列目录堵上之后只能靠猜。想连这个也挡住，得把桶改私有 + 前端改用签名 URL——评估过，照片不敏感，不值得。
+
+2026-08-03 实测：匿名列目录返回 `[]`（改之前能看到 `bill-pancake/…`），匿名上传 400，匿名删一张真实存在的图 400 且文件完好（同一 URL 仍下得到 1214097 字节），公开 URL 200。
 
 ### 想验证有没有真的锁上
 
