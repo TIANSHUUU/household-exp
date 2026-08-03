@@ -141,11 +141,13 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GK" \
 | python3 -c "import sys,json;[print(m['name'].replace('models/','')) for m in json.load(sys.stdin).get('models',[]) if 'generateContent' in m.get('supportedGenerationMethods',[])]"
 ```
 
-### ⚠️ 真正的天花板是 Google 的 20 次/天，不是函数里的 30
+### ⚠️ 日限额对齐的是 Google 的免费档，不是拍脑袋定的
 
-函数里 `DAILY_CAP = 30`，但免费档 Gemini Flash 的 RPD 是 **20**，而且**和用户自己在 AI Studio / Antigravity 里的用量共享同一个项目配额**。所以先撞墙的是 Google，用户看到的是一段英文 429，而不是 `err_rate_limited` 那句友好提示。
+`DAILY_CAP` 现在是 **20**，和免费档 Gemini Flash 的 RPD 一模一样（原来是 30）。设得比 Google 高没有意义：先撞墙的会是 Google，用户看到的是一段英文 429，而不是 `err_rate_limited` 那句友好提示。改这个数字时**记得同步改前端 `err_rate_limited` 文案里的次数**，中英两处。
 
-想让提示准确就把 `DAILY_CAP` 调到 20；想彻底分开就在 AI Studio 里新建一个独立项目专门给这个站用。两件都没做，因为哪个更合适取决于用户自己的用量习惯——**先问再改**。
+**但对齐了也不保证提示一定准确**——那 20 次是和用户自己在 AI Studio / Antigravity 里的用量**共享同一个项目配额**的（2026-08-03 实测 Gemini 3.5 Flash 已经 23/20）。用户白天写代码用掉了，晚上翻译照样会吃 Google 的 429。
+
+想彻底分开就在 AI Studio 里新建一个独立项目专门给这个站用。没做，等用户觉得碍事再说。开了付费档记得把 `DAILY_CAP` 往上调。
 
 ### 部署后怎么验
 
@@ -213,8 +215,8 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 **已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080304">
-<script src="assets/recipe.js?v=2026080304"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080305">
+<script src="assets/recipe.js?v=2026080305"></script>
 ```
 
 没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。

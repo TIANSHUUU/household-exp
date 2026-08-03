@@ -22,7 +22,12 @@
 // 所以鉴权放在函数里：拿到 Bearer 令牌后问一次 auth 服务「这是谁」，验不过
 // 就 401。匿名 key 也长得像 Bearer 令牌，但它不是用户令牌，问出来会被拒。
 
-const DAILY_CAP = 30;
+// 对齐 Google 免费档 Gemini Flash 的 RPD（20 次/天）。设得比它高没有意义：
+// 先撞墙的是 Google，用户看到的会是一段英文 429，而不是 err_rate_limited
+// 那句友好提示。注意这 20 次是**和用户自己在 AI Studio / Antigravity 里的
+// 用量共享同一个项目配额的**，所以实际能用的往往更少。
+// 哪天开了付费档，这个数字要跟着往上调。
+const DAILY_CAP = 20;
 
 const ALLOWED_ORIGINS = [
   'https://tianshuuu.github.io',
