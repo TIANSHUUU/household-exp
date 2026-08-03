@@ -11,3 +11,6 @@ recipe-details/
 # 想保留就留在本地；详见 docs/HANDOFF.md 第五点五节。
 requirement.md
 shopping_list.md
+
+# scripts/get-token.py 换来的登录令牌。仓库是公开的，绝不能提交。
+.token

@@ -296,6 +296,33 @@ recipe-details/
 
 **已决定走 `.gitignore`**，理由：照片母版本来就在用户的相册备份体系里，仓库没必要再存一份，各司其职。一个食谱约 732K，进了仓库会随食谱数量线性膨胀，而且提交过的大文件即使以后删掉也永远留在 git 历史里。
 
+### 录入方式：Claude 直接读 md 上传，不要写解析器
+
+用户把 md 和照片丢进 `recipe-details/<菜名>/`，说一声，**Claude 读 md → 转图 → curl 上传**。Bill Pancake 就是这么进去的。
+
+**md 不需要固定格式，这是有意的。** 看一眼 `Bill Pancake.md` 就知道为什么：frontmatter、emoji 标题、湿性/干性分组、括号里的替代方案、`14g - 28g` 这种区间用量——没有哪个解析器扛得住这种自由度，而 Claude 读起来毫无压力。**别为了"规范化"去写 md 解析器，那是把这条路最大的好处扔掉。**
+
+顺带三个好处，都是网页端的 Gemini 翻译给不了的：
+
+1. **翻译质量更高。** Gemini 拿到的是一段孤立 JSON 只能逐字翻；Claude 看得到整份食谱的上下文，遇到「一杯面粉」这种含糊的还能直接问用户。
+2. **不烧配额。** 免费档那 20 次/天留给手机上临时录入。
+3. **顺手补别名。** 录入时把 `番茄 ← 西红柿 / tomato` 一起写进 `ingredient_vocab.aliases`，还有 `tag_i18n` 的中英对照。这正是第五节 🟡 那条「别名表只自动长 canonical」想解决的问题——**这条路等于绕过了 `normalize` action 的必要性**。
+
+网页上手动录入仍然走 Gemini 自动翻译。两条路各管各的场景，不冲突。
+
+#### 上传前要先换令牌
+
+数据库现在要登录才能写，但**密码不该出现在 Claude 会话里**。所以：
+
+```bash
+python3 scripts/get-token.py                              # 用户自己跑，密码不回显
+curl ... -H "Authorization: Bearer $(cat .token)"          # Claude 这样引用
+```
+
+`.token` 已 gitignore（仓库是公开的），权限 0600，1 小时过期。Claude 全程看不到密码，也看不到令牌本身——用的是 shell 展开。
+
+**照片记得先转 sRGB 再传**：`./scripts/to-srgb.sh recipe-details/<菜名>/`（理由见第五节 HDR 那条）。
+
 ### 三件必须说清楚的事
 
 1. **删掉本地源料不影响网页。** 网页图片存在 Supabase Storage，是完全独立的一份拷贝。已实测确认：本地 720K 原图与 Storage 里 1186 KB 的 sRGB 版毫无关联。
