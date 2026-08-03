@@ -355,20 +355,21 @@
 
 <button class="fab" onclick="openAdd()">+</button>
 
+<!-- 改了 assets/ 里的文件就把 ?v= bump 一次，否则手机浏览器会一直用缓存的旧版。见 docs/HANDOFF.md 第五节。 -->
+<script src="assets/auth.js?v=2026080302"></script>
 <script>
 // ── Supabase REST (no SDK) ──
 const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
-const KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
-const H   = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+// KEY 和 H() 来自 assets/auth.js（必须先加载）
 
 async function actGetAll() {
-  const r = await fetch(`${API}/activities?select=*&order=date.asc,id.asc`, { headers: H });
+  const r = await fetch(`${API}/activities?select=*&order=date.asc,id.asc`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function actInsert(row) {
   const r = await fetch(`${API}/activities`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify([row]),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -376,43 +377,44 @@ async function actInsert(row) {
 }
 async function actUpdate(id, patch) {
   const r = await fetch(`${API}/activities?id=eq.${id}`, {
-    method: 'PATCH', headers: { ...H, 'Prefer': 'return=minimal' },
+    method: 'PATCH', headers: { ...await H(), 'Prefer': 'return=minimal' },
     body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(await r.text());
 }
 async function actDelete(id) {
-  const r = await fetch(`${API}/activities?id=eq.${id}`, { method: 'DELETE', headers: H });
+  const r = await fetch(`${API}/activities?id=eq.${id}`, { method: 'DELETE', headers: await H() });
   if (!r.ok) throw new Error(await r.text());
 }
 
-// ── Password (shared with 开支/购物 page via same session key) ──
-const PWD_HASH    = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
-const SESSION_KEY = 'hh_auth';
-
-async function sha256(s) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
+// ── Password (登录态由 assets/auth.js 统一管，四页共用) ──
+let signingIn = false;
 async function unlock() {
   const inp = document.getElementById('lock-input');
   const err = document.getElementById('lock-error');
+  const btn = document.querySelector('.lock-btn');
+  if (signingIn) return;                       // 登录要走网络，连点会发多个请求
   if (!inp.value) { err.textContent = '请输入密码'; return; }
-  if (await sha256(inp.value) === PWD_HASH) {
-    sessionStorage.setItem(SESSION_KEY, '1');
+  signingIn = true;
+  err.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = '登录中…'; }
+  const ok = await signIn(inp.value);
+  signingIn = false;
+  if (btn) { btn.disabled = false; btn.textContent = '进入'; }
+  if (ok) {
+    inp.value = '';
     document.getElementById('lock-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
-    err.textContent = '';
     initApp();
   } else {
-    err.textContent = '密码错误，请重试';
+    err.textContent = '登录失败，请检查密码和网络';
     inp.classList.add('error');
     inp.value = '';
     setTimeout(() => inp.classList.remove('error'), 400);
   }
 }
 function lockApp() {
-  sessionStorage.removeItem(SESSION_KEY);
+  signOut();
   document.getElementById('lock-screen').classList.remove('hidden');
   document.getElementById('app').classList.remove('visible');
   document.getElementById('lock-input').value = '';
@@ -650,8 +652,9 @@ function overlayClick(e, id) {
 }
 
 // ── Boot ──
-window.addEventListener('DOMContentLoaded', () => {
-  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+window.addEventListener('DOMContentLoaded', async () => {
+  // 本地存着令牌就续一次，续得上才直接进 app；续不上就老实显示登录页。
+  if (await resumeSession()) {
     document.getElementById('lock-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
     initApp();

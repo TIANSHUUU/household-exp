@@ -1,14 +1,10 @@
 // ── Supabase REST / Storage (no SDK) ──
 const API     = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
 const STORAGE = 'https://mpvsbeghuueffkjdemcr.supabase.co/storage/v1';
-const KEY     = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
 const BUCKET  = 'recipe-images';
-const H       = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+// KEY 和 H() 来自 assets/auth.js（必须先加载）
 
-const PWD_HASH    = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
-const SESSION_KEY = 'hh_auth';
-const PW_KEY      = 'hh_pw';     // 明文密码，只存 sessionStorage，供 Edge Function 鉴权
-const FN_URL      = 'https://mpvsbeghuueffkjdemcr.supabase.co/functions/v1/kitchen-ai';
+const FN_URL  = 'https://mpvsbeghuueffkjdemcr.supabase.co/functions/v1/kitchen-ai';
 
 // ── PURE LOGIC START ──
 // 这一段不碰 DOM、不碰网络，可以被 node 单独 eval 出来跑断言。
@@ -110,7 +106,8 @@ const I18N = {
     appTitle: '家庭食谱', navExpense: '💰 开支', navShopping: '🛒 购物',
     navActivity: '📅 日程', navLock: '锁定', langBtn: 'EN',
     lockSub: '请输入密码以继续', lockBtn: '进入',
-    lockNeedPw: '请输入密码', lockWrongPw: '密码错误，请重试',
+    lockNeedPw: '请输入密码', lockWrongPw: '登录失败，请检查密码和网络',
+    lockSigningIn: '登录中…',
     loading: '正在加载食谱…', loadFailed: '加载失败：{0}',
     searchPh: '搜索菜名或食材…', fridgeBtn: '🧊 冰箱里有什么', newBtn: '+ 新食谱',
     tagAll: '全部', groupByName: '菜名含此词 ({0})', groupByIng: '食材含此词 ({0})',
@@ -145,10 +142,8 @@ const I18N = {
     translateNotReady: '自动翻译还没接通。等 Edge Function 部署好就能用了——现在可以先手填另一个页签。',
     translateFailed: '翻译失败：{0}',
     translateEmpty: '当前页签是空的，没有可翻译的内容。',
-    pwPrompt: '请再输一次网页密码（翻译功能需要用它验证身份）',
-    pwMissing: '没有密码，无法调用翻译',
     err_rate_limited: '今天的翻译次数用完了（每天 30 次）。明天再来，或者手填另一个页签。',
-    err_unauthorized: '密码不对，请重试',
+    err_unauthorized: '登录已过期，请重新登录',
     err_unknown_action: '服务端不认识这个请求',
     err_provider_error: '翻译服务出错了，稍后再试',
   },
@@ -156,7 +151,8 @@ const I18N = {
     appTitle: 'Our Recipes', navExpense: '💰 Expenses', navShopping: '🛒 Shopping',
     navActivity: '📅 Schedule', navLock: 'Lock', langBtn: '中文',
     lockSub: 'Enter the password to continue', lockBtn: 'Enter',
-    lockNeedPw: 'Password required', lockWrongPw: 'Wrong password, try again',
+    lockNeedPw: 'Password required', lockWrongPw: 'Sign-in failed — check the password and your connection',
+    lockSigningIn: 'Signing in…',
     loading: 'Loading recipes…', loadFailed: 'Could not load: {0}',
     searchPh: 'Search a dish or ingredient…', fridgeBtn: '🧊 What\'s in the fridge', newBtn: '+ New recipe',
     tagAll: 'All', groupByName: 'Name matches ({0})', groupByIng: 'Ingredient matches ({0})',
@@ -191,10 +187,8 @@ const I18N = {
     translateNotReady: 'Auto-translation isn\'t wired up yet. It needs the edge function deployed — for now you can fill the other tab by hand.',
     translateFailed: 'Translation failed: {0}',
     translateEmpty: 'This tab is empty — nothing to translate.',
-    pwPrompt: 'Enter the site password again (translation needs it to authenticate)',
-    pwMissing: 'No password, cannot translate',
     err_rate_limited: 'Out of translations for today (30/day). Try tomorrow, or fill the other tab by hand.',
-    err_unauthorized: 'Wrong password, try again',
+    err_unauthorized: 'Session expired — please sign in again',
     err_unknown_action: 'The server did not recognise this request',
     err_provider_error: 'The translation service errored — try again shortly',
   },
@@ -244,17 +238,20 @@ function paintChrome() {
   document.title = t('appTitle');
 }
 
-// ── 密码门（与其余三页共用 PWD_HASH / SESSION_KEY） ──
-async function sha256(s) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+// ── 密码门（登录态由 assets/auth.js 统一管，四页共用） ──
+let signingIn = false;
 async function unlock() {
-  const inp = $('lock-input'), err = $('lock-error');
+  const inp = $('lock-input'), err = $('lock-error'), btn = $('lock-btn');
+  if (signingIn) return;                       // 登录要走网络，连点会发多个请求
   if (!inp.value) { err.textContent = t('lockNeedPw'); return; }
-  if (await sha256(inp.value) === PWD_HASH) {
-    sessionStorage.setItem(SESSION_KEY, '1');
-    sessionStorage.setItem(PW_KEY, inp.value);   // Edge Function 鉴权要用
+  signingIn = true;
+  err.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = t('lockSigningIn'); }
+  const ok = await signIn(inp.value);
+  signingIn = false;
+  if (btn) { btn.disabled = false; btn.textContent = t('lockBtn'); }
+  if (ok) {
+    inp.value = '';
     enterApp();
   } else {
     err.textContent = t('lockWrongPw');
@@ -270,8 +267,7 @@ function enterApp() {
   initApp();
 }
 function lockApp() {
-  sessionStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem(PW_KEY);
+  signOut();
   $('lock-screen').classList.remove('hidden');
   $('app').classList.remove('visible');
   $('lock-input').value = '';
@@ -310,33 +306,33 @@ window.addEventListener('hashchange', render);
 
 // ── DB 层 ──
 async function vocabGetAll() {
-  const r = await fetch(`${API}/ingredient_vocab?select=*&order=canonical.asc`, { headers: H });
+  const r = await fetch(`${API}/ingredient_vocab?select=*&order=canonical.asc`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function vocabInsert(rows) {
   if (!rows.length) return [];
   const r = await fetch(`${API}/ingredient_vocab`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify(rows),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function recipeGetAll() {
-  const r = await fetch(`${API}/recipes?select=*&order=id.desc`, { headers: H });
+  const r = await fetch(`${API}/recipes?select=*&order=id.desc`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function tagI18nGetAll() {
-  const r = await fetch(`${API}/tag_i18n?select=zh,en`, { headers: H });
+  const r = await fetch(`${API}/tag_i18n?select=zh,en`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function tagI18nInsert(rows) {
   if (!rows.length) return [];
   const r = await fetch(`${API}/tag_i18n`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation,resolution=ignore-duplicates' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation,resolution=ignore-duplicates' },
     body: JSON.stringify(rows),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -344,7 +340,7 @@ async function tagI18nInsert(rows) {
 }
 async function recipeInsert(rec) {
   const r = await fetch(`${API}/recipes`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify([rec]),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -352,14 +348,14 @@ async function recipeInsert(rec) {
 }
 async function recipeUpdate(id, patch) {
   const r = await fetch(`${API}/recipes?id=eq.${id}`, {
-    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'PATCH', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(await r.text());
   return (await r.json())[0];
 }
 async function recipeDelete(id) {
-  const r = await fetch(`${API}/recipes?id=eq.${id}`, { method: 'DELETE', headers: H });
+  const r = await fetch(`${API}/recipes?id=eq.${id}`, { method: 'DELETE', headers: await H() });
   if (!r.ok) throw new Error(await r.text());
 }
 
@@ -394,7 +390,7 @@ async function uploadImage(folder, file) {
   const path = `recipes/${folder}/${randomName(blob.type)}`;
   const r = await fetch(`${STORAGE}/object/${BUCKET}/${path}`, {
     method: 'POST',
-    headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': blob.type || 'image/jpeg' },
+    headers: { ...await H(), 'Content-Type': blob.type || 'image/jpeg' },
     body: blob,
   });
   if (!r.ok) throw new Error(await r.text());
@@ -410,7 +406,7 @@ async function deleteImage(url) {
   const path = url.slice(i + marker.length);
   try {
     await fetch(`${STORAGE}/object/${BUCKET}/${path}`, {
-      method: 'DELETE', headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY },
+      method: 'DELETE', headers: await H(),
     });
   } catch (e) { console.warn('删除图片失败（已忽略）', path, e); }
 }
@@ -1027,30 +1023,19 @@ async function copyPrompt() {
 }
 
 // ── 自动翻译 ──
-// 从另一个页面解锁跳过来时 sessionStorage 里没有明文密码，补问一次。
-function kitchenPw() {
-  let pw = sessionStorage.getItem(PW_KEY);
-  if (!pw) {
-    pw = prompt(t('pwPrompt'));
-    if (pw) sessionStorage.setItem(PW_KEY, pw);
-  }
-  return pw;
-}
-
+// 鉴权和数据库请求走同一套令牌：函数开着 Verify JWT，Supabase 在函数跑起来
+// 之前就把令牌验掉了，所以函数内部不用再比密码。
 async function callKitchenAI(action, payload) {
-  const pw = kitchenPw();
-  if (!pw) throw new Error(t('pwMissing'));
   const r = await fetch(FN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': KEY,
-               'Authorization': 'Bearer ' + KEY, 'x-kitchen-pw': pw },
+    headers: await H(),
     body: JSON.stringify({ action, payload }),
   });
   let j = null;
   try { j = await r.json(); } catch (e) { /* 下面按 HTTP 状态处理 */ }
   if (j && j.ok) return j.data;
   const code = (j && j.error) || ('http_' + r.status);
-  if (code === 'unauthorized') sessionStorage.removeItem(PW_KEY);   // 密码错了，下次重问
+  if (r.status === 401) lockApp();     // 令牌失效，回登录页
   throw new Error(t('err_' + code) !== 'err_' + code ? t('err_' + code)
                                                     : ((j && j.detail) || code));
 }
@@ -1112,8 +1097,11 @@ setInterval(poll, 15000);
 // 处于暂时性死区，提前调用 initApp() 会在 `if (loaded)` 上抛 ReferenceError。
 document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
 paintChrome();
-if (sessionStorage.getItem(SESSION_KEY) === '1') {
-  enterApp();
-} else {
-  $('lock-input').focus();
-}
+// 本地存着令牌就续一次，续得上才直接进 app；续不上就老实显示登录页。
+(async () => {
+  if (await resumeSession()) {
+    enterApp();
+  } else {
+    $('lock-input').focus();
+  }
+})();

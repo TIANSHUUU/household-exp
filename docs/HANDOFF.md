@@ -1,6 +1,6 @@
 # household_exp 项目 Handoff
 
-最后更新：2026-08-02
+最后更新：2026-08-03
 
 这份文档给「接手这个仓库的下一个人（或下一段对话）」看。目标是让你不用回读聊天记录就能继续干活。
 
@@ -24,7 +24,7 @@
 | `activity.html` | 活动安排 | 同上 |
 | `recipe.html` | 家庭食谱 | **例外**：拆成 `assets/recipe.css` + `assets/recipe.js`，gourmet 编辑风，仅浅色 |
 
-四页共用同一个密码门（`PWD_HASH` + `sessionStorage['hh_auth']`），任一页解锁则四页通行。**没有身份区分**——两人权限完全相同，数据库不记录谁改了什么。
+四页共用同一个登录（`assets/auth.js`），任一页登录则四页通行。**没有身份区分**——两人共用一个账号，数据库不记录谁改了什么。详见第九节。
 
 ---
 
@@ -93,17 +93,18 @@ storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名
 1. Supabase 控制台 → **Edge Functions** → **Deploy a new function**
 2. 函数名 **`kitchen-ai`**（必须一字不差——前端 `FN_URL` 按这个名字请求）
 3. 贴入 `supabase/functions/kitchen-ai/index.ts` 全部内容（`pbcopy < supabase/functions/kitchen-ai/index.ts`）
-4. **关掉 Verify JWT** ⚠️ ——项目用的是新版 `sb_publishable_` 密钥，它不是 JWT，开着会被直接拒绝。鉴权由函数自己做（`x-kitchen-pw` 头 + 服务端比 hash + 日限额）。
+4. **打开 Verify JWT** ⚠️ ——2026-08-03 上了 Supabase Auth 之后，前端带的是登录换来的 access_token，是真 JWT，平台会在函数跑起来之前验掉。函数内部因此**没有任何密码校验**，关掉 Verify JWT 等于把它对全世界敞开，谁都能烧你的 API 额度。
+   （旧文档说"必须关掉"，那是 `sb_publishable_` 当鉴权凭证时代的事，已经不适用。）
 5. 配 secrets：
 
    | 名称 | 值 |
    |---|---|
    | `PROVIDER` | `gemini` |
    | `GEMINI_API_KEY` | 用户在 Google AI Studio 申请的 |
-   | `KITCHEN_PWD_HASH` | `9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb` |
    | `GEMINI_MODEL` | 可选，默认 `gemini-2.0-flash`。模型名 Google 会变，不对就填这个覆盖，别改代码 |
 
    `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` 平台自动注入。
+   `KITCHEN_PWD_HASH` 不再需要，配了也不读。
 
 ### 部署后怎么验
 
@@ -111,18 +112,23 @@ storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名
 FN=https://mpvsbeghuueffkjdemcr.supabase.co/functions/v1/kitchen-ai
 K=sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5
 
-# 1. 无密码 → 应 401 unauthorized
+# 先登录换一个令牌（网页密码）
+TOK=$(curl -s -X POST "https://mpvsbeghuueffkjdemcr.supabase.co/auth/v1/token?grant_type=password" \
+  -H "apikey: $K" -H "Content-Type: application/json" \
+  -d '{"email":"home@household.local","password":"<网页密码>"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+# 1. 只带匿名 key（没登录）→ 应 401，平台层就挡掉了
 curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $K" \
   -H "Content-Type: application/json" -d '{"action":"translate","payload":{}}'
 
-# 2. 错误 action → 应 400 unknown_action（带正确密码）
-curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $K" \
-  -H "x-kitchen-pw: <网页密码>" -H "Content-Type: application/json" \
-  -d '{"action":"nope","payload":{}}'
+# 2. 带令牌 + 错误 action → 应 400 unknown_action
+curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $TOK" \
+  -H "Content-Type: application/json" -d '{"action":"nope","payload":{}}'
 
 # 3. 真翻译
-curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $K" \
-  -H "x-kitchen-pw: <网页密码>" -H "Content-Type: application/json" \
+curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $TOK" \
+  -H "Content-Type: application/json" \
   -d '{"action":"translate","payload":{"from":"zh","to":"en","recipe":{"name":"番茄炒蛋","ingredients":[{"name":"番茄","amount":"2个"}],"steps":["热油炒蛋"],"tags":["中餐"]}}}'
 ```
 
@@ -160,41 +166,21 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 **已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080301">
-<script src="assets/recipe.js?v=2026080301"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080302">
+<script src="assets/recipe.js?v=2026080302"></script>
 ```
 
 没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。
 
-只有 `recipe.html` 需要管这件事——另外三个页面 CSS/JS 全部内联在 HTML 里，改动随 HTML 一起失效，天然没有这个问题。
+四个页面现在都引了 `assets/auth.js`，所以四个都要管。CSS 只有 `recipe.html` 有。
 
-### 🔴 全部数据对公网可读可写（既有问题，非本次引入）
+### ✅ 全部数据对公网可读可写（2026-08-03 已修）
 
-**仓库是 PUBLIC 的**（`gh repo view` 确认；GitHub Pages 免费版要求如此）。四个页面的源码里都写着 Supabase URL 和匿名 key，任何人查看网页源码即可提取。
+**曾经的问题**：仓库是 PUBLIC 的（GitHub Pages 免费版要求如此），四个页面的源码里都写着 Supabase URL 和匿名 key。配上 `for all using(true) with check(true)` 的 RLS 策略，结果是任何人都能读、改、删全部数据——2026-08-02 实测用公开信息读到了 `expenses` 107 条、`shopping_items` 39 条、`activities` 9 条。老密码门只挡 UI 不挡 API。
 
-配上 `for all using(true) with check(true)` 的 RLS 策略，结果是：**任何人都能读、改、删全部数据。**
+**修法**：换成 Supabase Auth 真登录，RLS 收成 `to authenticated`。细节见第九节。
 
-2026-08-02 实测（只用公开页面里能提取到的信息）：
-
-| 表 | 可读记录数 |
-|---|---|
-| `expenses` | 107 |
-| `cycles` | 3 |
-| `shopping_lists` / `shopping_items` | 2 / 39 |
-| `activities` | 9 |
-| `recipes` | 1 |
-
-**密码门只挡 UI，不挡 API。** 它把界面藏起来了，数据接口是完全敞开的。这是四个页面从第一天起的设计，不是食谱页引入的。
-
-现实风险取决于有没有人找到这个站——但仓库在 GitHub 上公开可搜，源码里就写着 Supabase 地址。
-
-**可选的收敛方向**（都需要用户决策，别擅自动手，会影响全部四个页面）：
-
-1. **仓库转私有** —— 但 GitHub Pages 免费版要求公开仓库，需要 Pro 订阅。挡住了源码搜索，挡不住已经看过页面的人。
-2. **换成 Supabase Auth 真登录**，RLS 策略改成 `auth.uid() is not null`。最彻底，但要给两人建账号，四个页面的密码门全部重写。
-3. **接受现状** —— 数据是两个人的家庭开支和菜谱，不是信用卡号。评估过认为可接受也是一种有效选择，但应当是**知情后的选择**，而不是默认。
-
-在用户明确表态前，**不要把任何含个人信息的文件提交进仓库**（`requirement.md` 就是因此被 gitignore 的）。
+**仓库仍然是公开的**，所以那条规矩不变：**不要把任何含个人信息的文件提交进仓库**（`requirement.md` 就是因此被 gitignore 的）。
 
 ### 🟡 别名表只自动长 canonical，不长别名
 
@@ -361,9 +347,85 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 
 ## 八、下一步建议顺序
 
-0. **和用户确认数据公开可读这件事**（第五节 🔴）——这是唯一涉及隐私的问题，值得先摆到台面上，即使结论是「接受现状」
+0. ~~和用户确认数据公开可读这件事~~ ✅ 2026-08-03 完成，换成了 Supabase Auth（第九节）
 1. ~~验证并修复手机端空白~~ ✅ 2026-08-03 完成
 2. **部署 Edge Function**（第四节），部署后实际翻一次「Bill 松饼」并人工校对计量单位
 3. 加 `normalize` action，解决别名表不自动长别名的问题
 4. 购物清单联动（原三期）
 5. `suggest` action（✨ 创意建议）
+
+---
+
+## 九、登录是怎么工作的（2026-08-03 起）
+
+### 一句话
+
+网页密码现在是一个**真实 Supabase 账号**的密码。登录成功换回令牌，数据库的 RLS 只认登录用户——**没有令牌 = 数据库层面直接拒绝**，而不是像以前那样只把界面藏起来。
+
+### 账号
+
+| | |
+|---|---|
+| 邮箱 | `home@household.local`（写死在 `assets/auth.js`，**故意用收不到信的假地址**——仓库是公开的，写真实邮箱等于把它送去被爬） |
+| 密码 | 只在用户手里和 Supabase 里，仓库里没有 |
+| 数量 | **一个，两人共用**。数据库本来就不记录谁改了什么，两个账号换不来任何东西，只会让登录框多一个邮箱输入框 |
+| 忘了密码 | 控制台 Authentication → Users 直接重设。用不着邮件找回——项目 owner 就是用户自己 |
+
+**⚠️ 公开注册必须保持关闭**（Authentication → Sign In / Providers → Email → Allow new users to sign up）。策略是「登录用户可读写」，一旦谁都能自助注册，注册完就有了和两人一样的权限，整套改造归零。验证方法：
+
+```bash
+curl -s -X POST 'https://mpvsbeghuueffkjdemcr.supabase.co/auth/v1/signup' \
+  -H 'apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"probe@evil.test","password":"Whatever12345!"}'
+# 期望：{"code":422,"error_code":"signup_disabled",...}
+```
+
+### 代码
+
+`assets/auth.js` 是四个页面共用的唯一一份登录代码，**必须在各页面自己的脚本之前加载**——它定义了 `KEY` 和 `H()`。
+
+| 函数 | 干什么 |
+|---|---|
+| `signIn(password)` | 登录页调用，换令牌，成功返回 true |
+| `resumeSession()` | 启动块调用，本地有令牌就续一次；返回 true 才进 app |
+| `H()` | **所有** PostgREST / Storage 请求的鉴权头。令牌过期会先自动续 |
+| `signOut()` | `lockApp()` 调用，清掉令牌 |
+
+`H()` 是 async 的，所以调用点长这样——32 处全是这个形状：
+
+```js
+fetch(url, { headers: await H() })
+fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' } })
+```
+
+**加新的 fetch 时照抄这个形状。** 写成 `headers: H` 会把函数本身当 header 传出去，请求直接 401。
+
+### 两个不显眼但重要的地方
+
+**续期请求做了去重**（`auth.js` 里的 `refreshing`）。Supabase 每次续期都会作废旧的 refresh_token，几个请求同时续会有人拿到 `invalid_grant`，然后把登录态清掉——症状是「用着用着突然被踢回登录页」。四个页面都有 15 秒轮询 + 用户操作并发，这个坑一定会踩到。
+
+**令牌存 `localStorage['hh_tok']`，不是 sessionStorage。** 登录态该跨会话保持，否则手机上每次切回来都要重输密码。（对比：语言偏好也在 localStorage，见 `recipe.js` 的 `LANG_KEY`。）
+
+### RLS 策略长什么样
+
+八张业务表统一是这一条：
+
+```sql
+create policy authed_all on public.<表名> for all to authenticated using (true) with check (true);
+```
+
+`to authenticated` 是关键——没登录的请求走 `anon` 角色，没有任何策略匹配，直接拒绝。`ai_usage` 故意没有策略：只有 Edge Function 用 service role 访问，service role 绕过 RLS。
+
+Storage 的 `recipe-images` 桶：**读继续是公开的**（桶是 public，图片走 CDN 不查策略，所以 `<img src>` 照常工作），写和删要求登录。
+
+### 想验证有没有真的锁上
+
+```bash
+# 只带匿名 key（模拟外人）→ 应该 401
+curl -s -o /dev/null -w '%{http_code}\n' \
+  'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/expenses?select=id' \
+  -H 'apikey: sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5'
+```
+
+改完 RLS 之后这条必须是 401。**如果它还返回 200，说明有表漏改了策略**，回去核对第九节那条 SQL 的表名列表。

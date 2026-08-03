@@ -526,22 +526,23 @@
 
 <button class="fab" onclick="openAdd()">+</button>
 
+<!-- 改了 assets/ 里的文件就把 ?v= bump 一次，否则手机浏览器会一直用缓存的旧版。见 docs/HANDOFF.md 第五节。 -->
+<script src="assets/auth.js?v=2026080302"></script>
 <script>
 // ── Supabase REST (no SDK) ──
 const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
-const KEY = 'sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5';
-const H   = { 'apikey': KEY, 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+// KEY 和 H() 来自 assets/auth.js（必须先加载）
 
 async function dbGet(cycleId) {
   const filter = cycleId != null ? `&cycle_id=eq.${cycleId}` : '';
-  const r = await fetch(`${API}/expenses?select=*${filter}&order=date.asc,id.asc`, { headers: H });
+  const r = await fetch(`${API}/expenses?select=*${filter}&order=date.asc,id.asc`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbInsert(rows) {
   const body = Array.isArray(rows) ? rows : [rows];
   const r = await fetch(`${API}/expenses`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -549,31 +550,31 @@ async function dbInsert(rows) {
 }
 async function dbUpdate(id, row) {
   const r = await fetch(`${API}/expenses?id=eq.${id}`, {
-    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'PATCH', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbDelete(id) {
-  const r = await fetch(`${API}/expenses?id=eq.${id}`, { method: 'DELETE', headers: H });
+  const r = await fetch(`${API}/expenses?id=eq.${id}`, { method: 'DELETE', headers: await H() });
   if (!r.ok) throw new Error(await r.text());
 }
 
 // ── Cycles ──
 async function dbGetActiveCycle() {
-  const r = await fetch(`${API}/cycles?status=eq.active&order=id.desc&limit=1`, { headers: H });
+  const r = await fetch(`${API}/cycles?status=eq.active&order=id.desc&limit=1`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return (await r.json())[0] || null;
 }
 async function dbGetArchivedCycles() {
-  const r = await fetch(`${API}/cycles?status=eq.archived&order=id.desc`, { headers: H });
+  const r = await fetch(`${API}/cycles?status=eq.archived&order=id.desc`, { headers: await H() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbInsertCycle(row) {
   const r = await fetch(`${API}/cycles`, {
-    method: 'POST', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify([row]),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -581,7 +582,7 @@ async function dbInsertCycle(row) {
 }
 async function dbUpdateCycle(id, row) {
   const r = await fetch(`${API}/cycles?id=eq.${id}`, {
-    method: 'PATCH', headers: { ...H, 'Prefer': 'return=representation' },
+    method: 'PATCH', headers: { ...await H(), 'Prefer': 'return=representation' },
     body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -589,33 +590,37 @@ async function dbUpdateCycle(id, row) {
 }
 
 // ── Password ──
-const PWD_HASH   = '9c2e571eb60385be3ced6e5d4bd7d34837f5219d693e679cd324d5e12b83c4eb';
-const SESSION_KEY = 'hh_auth';
-const SET_KEY     = 'hh_set_v2';
+// 密码送去 Supabase 验（见 assets/auth.js），验过才拿到能读写数据库的令牌。
+// RLS 只认登录用户，所以这道门不再只是把界面藏起来。
+const SET_KEY = 'hh_set_v2';
 
-async function sha256(s) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
+let signingIn = false;
 async function unlock() {
   const inp = document.getElementById('lock-input');
   const err = document.getElementById('lock-error');
+  const btn = document.querySelector('.lock-btn');
+  if (signingIn) return;                       // 登录要走网络，连点会发多个请求
   if (!inp.value) { err.textContent = '请输入密码'; return; }
-  if (await sha256(inp.value) === PWD_HASH) {
-    sessionStorage.setItem(SESSION_KEY, '1');
+  signingIn = true;
+  err.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = '登录中…'; }
+  const ok = await signIn(inp.value);
+  signingIn = false;
+  if (btn) { btn.disabled = false; btn.textContent = '进入'; }
+  if (ok) {
+    inp.value = '';
     document.getElementById('lock-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
-    err.textContent = '';
     initApp();
   } else {
-    err.textContent = '密码错误，请重试';
+    err.textContent = '登录失败，请检查密码和网络';
     inp.classList.add('error');
     inp.value = '';
     setTimeout(() => inp.classList.remove('error'), 400);
   }
 }
 function lockApp() {
-  sessionStorage.removeItem(SESSION_KEY);
+  signOut();
   document.getElementById('lock-screen').classList.remove('hidden');
   document.getElementById('app').classList.remove('visible');
   document.getElementById('lock-input').value = '';
@@ -1045,11 +1050,15 @@ function escHtml(s) {
 }
 
 // ── Boot ──
-if (sessionStorage.getItem(SESSION_KEY) === '1') {
-  document.getElementById('lock-screen').classList.add('hidden');
-  document.getElementById('app').classList.add('visible');
-  initApp();
-}
+// 本地存着令牌就续一次，续得上才直接进 app；续不上就老实显示登录页。
+// classic script 没有顶层 await，所以包一层。
+(async () => {
+  if (await resumeSession()) {
+    document.getElementById('lock-screen').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    initApp();
+  }
+})();
 </script>
 </body>
 </html>

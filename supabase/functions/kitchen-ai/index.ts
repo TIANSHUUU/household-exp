@@ -8,9 +8,12 @@
 //   GEMINI_API_KEY    Google AI Studio 申请
 //   GEMINI_MODEL      可选，默认 gemini-2.0-flash
 //   ANTHROPIC_API_KEY 备用供应商，暂时可以不填
-//   KITCHEN_PWD_HASH  网页密码的 SHA-256（和 recipe.js 里的 PWD_HASH 同一个值）
 //
 // SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 由平台自动注入，不用手动配。
+//
+// 鉴权：**部署时把 Verify JWT 打开**。前端带的是登录后拿到的 access_token，
+// 是真 JWT，Supabase 在函数跑起来之前就验掉了——所以这里没有任何密码校验，
+// 也不该有。Verify JWT 关掉 = 这个函数对全世界敞开，谁都能烧你的 API 额度。
 
 const DAILY_CAP = 30;
 
@@ -24,15 +27,10 @@ function corsHeaders(origin: string | null) {
   const allow = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-kitchen-pw',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   };
-}
-
-async function sha256(s: string) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── 供应商适配器：同一个签名，换供应商不影响调用方 ──
@@ -164,13 +162,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
 
-  // 门锁：明文密码走 header，函数这边比 hash。挡不住暴力破解，但抬高了门槛。
-  const expected = Deno.env.get('KITCHEN_PWD_HASH');
-  if (expected) {
-    const pw = req.headers.get('x-kitchen-pw') || '';
-    if (!pw || (await sha256(pw)) !== expected) return json({ ok: false, error: 'unauthorized' }, 401);
-  }
-
+  // 这里不做鉴权：Verify JWT 打开时，没带有效令牌的请求根本到不了这一行。
   let body: any;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'bad_json' }, 400); }
   if (body?.action !== 'translate') return json({ ok: false, error: 'unknown_action' }, 400);
