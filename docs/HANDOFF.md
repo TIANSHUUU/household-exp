@@ -174,6 +174,14 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 
 四个页面现在都引了 `assets/auth.js`，所以四个都要管。CSS 只有 `recipe.html` 有。
 
+**但 `?v=` 管不了 HTML 自己。** 它只能让 HTML 里**引用的资源**失效，`index.html` / `shopping.html` / `activity.html` / `recipe.html` 这四个文件本身是浏览器直接缓存的，没有构建步骤就没法给它们加指纹。GitHub Pages 给 HTML 设的是 `Cache-Control: max-age=600`（实测），所以**推上线后最多 10 分钟**各设备才会拿到新版。
+
+这意味着：**凡是「前端和后端必须同时切换」的改动，都有一个最长 10 分钟的窗口，期间新旧版本同时在线。** 2026-08-03 上 Auth 时就撞上了——代码推上去后手机上仍是旧页面、旧密码照样能进。处理办法：
+
+1. 别在这个窗口里改数据库策略。等所有设备都确认拿到新版再改，否则旧页面会立刻读不到数据，而且用户没法自救。
+2. 想立刻验证某台设备，网址后面加个随便什么参数绕开缓存：`.../index.html?x=1`。
+3. 想确认线上到底是不是新版：`curl -s <url>?cb=$(date +%s) | grep -c auth.js`。
+
 ### ✅ 全部数据对公网可读可写（2026-08-03 已修）
 
 **曾经的问题**：仓库是 PUBLIC 的（GitHub Pages 免费版要求如此），四个页面的源码里都写着 Supabase URL 和匿名 key。配上 `for all using(true) with check(true)` 的 RLS 策略，结果是任何人都能读、改、删全部数据——2026-08-02 实测用公开信息读到了 `expenses` 107 条、`shopping_items` 39 条、`activities` 9 条。老密码门只挡 UI 不挡 API。
