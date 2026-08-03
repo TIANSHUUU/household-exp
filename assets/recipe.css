@@ -381,14 +381,20 @@ body {
 /* 按钮挤在菜名和缺料之间，手机上空间紧张，所以 flex-shrink:0 保证它不被压扁，
    缺料那段允许换行。 */
 .bucket-list .shop-add {
-  flex-shrink: 0; background: transparent; color: var(--muted);
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: 5px 9px; font-size: 12px; font-family: inherit;
-  cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s;
+  flex-shrink: 0;
+  background: rgba(240,116,42,0.12); color: var(--terracotta);
+  border: 1px solid rgba(240,116,42,0.45); border-radius: 8px;
+  padding: 6px 11px; font-size: 13px; font-weight: 600; font-family: inherit;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
 }
-.bucket-list .shop-add:hover:not(:disabled) { color: var(--terracotta); border-color: var(--terracotta); }
+.bucket-list .shop-add:hover:not(:disabled) {
+  background: var(--terracotta); color: #fff; border-color: var(--terracotta);
+}
 .bucket-list .shop-add:disabled { cursor: default; }
-.bucket-list .shop-add.shop-done { color: #2E8B57; border-color: #2E8B57; }
+.bucket-list .shop-add.shop-done {
+  background: rgba(46,139,87,0.12); color: #2E8B57; border-color: rgba(46,139,87,0.45);
+}
 
 .picker {
   position: fixed; inset: 0; z-index: 9997; background: rgba(19,49,74,0.55);
