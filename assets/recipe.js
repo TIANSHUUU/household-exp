@@ -160,6 +160,8 @@ const I18N = {
     copyBtn: '📋 复制给 Claude 提问', copied: '✓ 已复制',
     copyHint: '把食谱库和手头食材拼成一段 prompt 复制走，粘到 claude.ai 里问创意建议。用的是你自己的订阅额度，不花 API 钱。',
     copyFailed: '复制失败，请手动复制：',
+    aiBtn: '✨ AI 灵感', aiThinking: '想中…', aiFailed: 'AI 灵感失败：{0}',
+    aiHint: '把上面同一段 prompt 送给 Gemini，直接在这里出结果。和翻译共用每天 20 次的额度。',
     shopBtn: '+ 🛒', shopBtnTitle: '把缺的加进购物清单',
     shopPickTitle: '加到哪张清单？', shopPickSub: '要加：{0}',
     shopNewList: '+ 新建一张清单', shopNewListPrompt: '新清单叫什么？',
@@ -170,7 +172,7 @@ const I18N = {
     sharedNote: '以下内容中英共用',
     translateFailed: '翻译失败：{0}',
     translateEmpty: '当前页签是空的，没有可翻译的内容。',
-    err_rate_limited: '今天的翻译次数用完了（每天 20 次）。明天再来，或者手填另一个页签。',
+    err_rate_limited: '今天的 AI 次数用完了（每天 20 次，翻译和灵感共用）。明天再来。',
     err_unauthorized: '登录已过期，请重新登录',
     err_unknown_action: '服务端不认识这个请求',
     err_provider_error: '翻译服务出错了，稍后再试',
@@ -209,6 +211,8 @@ const I18N = {
     copyBtn: '📋 Copy a prompt for Claude', copied: '✓ Copied',
     copyHint: 'Copies your recipe collection plus what you have on hand as a ready-made prompt. Paste it into claude.ai — it uses your own subscription, not paid API credits.',
     copyFailed: 'Copy failed — here is the text:',
+    aiBtn: '✨ AI ideas', aiThinking: 'Thinking…', aiFailed: 'AI ideas failed: {0}',
+    aiHint: 'Sends the same prompt to Gemini and shows the answer right here. Shares the same 20-a-day budget as translation.',
     shopBtn: '+ 🛒', shopBtnTitle: 'Add what\'s missing to a shopping list',
     shopPickTitle: 'Add to which list?', shopPickSub: 'Adding: {0}',
     shopNewList: '+ New list', shopNewListPrompt: 'Name the new list',
@@ -219,7 +223,7 @@ const I18N = {
     sharedNote: 'Shared across both languages',
     translateFailed: 'Translation failed: {0}',
     translateEmpty: 'This tab is empty — nothing to translate.',
-    err_rate_limited: 'Out of translations for today (20/day). Try tomorrow, or fill the other tab by hand.',
+    err_rate_limited: 'Out of AI calls for today (20/day, shared by translation and ideas). Try again tomorrow.',
     err_unauthorized: 'Session expired — please sign in again',
     err_unknown_action: 'The server did not recognise this request',
     err_provider_error: 'The translation service errored — try again shortly',
@@ -491,6 +495,7 @@ let listQuery = '', listTag = '';   // 列表页搜索词 / 选中标签
 let ideaHave = [];                  // 灵感页已选食材（canonical）
 let ideaMatches = [];               // 上次分桶结果，购物清单按钮按 recipe.id 回查缺料
 let shopPending = null;             // { recipeId, missing[] } 正在等你选清单的那一条
+let ideaSuggestion = '';            // ✨ 返回的建议全文，换食材时清空
 
 function reindex() {
   aliasMap = buildAliasMap(vocab);
@@ -1018,8 +1023,11 @@ function renderIdea() {
     </div>
     ${body}
     ${ideaHave.length ? `<div class="detail-actions">
+      <button class="btn btn-accent" id="ai-btn" onclick="askSuggest()">${escHtml(t('aiBtn'))}</button>
       <button class="btn btn-ghost" id="copy-btn" onclick="copyPrompt()">${escHtml(t('copyBtn'))}</button>
     </div>
+    ${ideaSuggestion ? `<div class="ai-out">${escHtml(ideaSuggestion)}</div>` : ''}
+    <div class="hint">${escHtml(t('aiHint'))}</div>
     <div class="hint">${escHtml(t('copyHint'))}</div>` : ''}
   </div>`;
 
@@ -1030,16 +1038,17 @@ function renderIdea() {
 function addHave(text) {
   const k = toCanonical(text, aliasMap);
   if (k && !ideaHave.includes(k)) ideaHave.push(k);
+  ideaSuggestion = '';        // 食材变了，旧建议就作废
   renderIdea();
 }
-function removeHave(i) { ideaHave.splice(i, 1); renderIdea(); }
+function removeHave(i) { ideaHave.splice(i, 1); ideaSuggestion = ''; renderIdea(); }
 
 function onHaveKey(ev, el) {
   if (ev.key === 'Enter') {
     ev.preventDefault();
     if (el.value.trim()) { addHave(el.value); el.value = ''; }
   } else if (ev.key === 'Backspace' && !el.value && ideaHave.length) {
-    ideaHave.pop(); renderIdea();
+    ideaHave.pop(); ideaSuggestion = ''; renderIdea();
   }
 }
 
@@ -1107,6 +1116,27 @@ async function copyPrompt() {
     if (b) { const x = b.textContent; b.textContent = t('copied'); setTimeout(() => { b.textContent = x; }, 1800); }
   } catch (e) {
     alert(t('copyFailed') + '\n\n' + buildPrompt());
+  }
+}
+
+// ── ✨ AI 灵感 ──
+// 送出去的就是「复制给 Claude」那颗按钮拼的同一段 prompt（buildPrompt），
+// 所以两条路径永远说同样的话。函数只负责调模型、返回纯文本。
+async function askSuggest() {
+  const btn = $('ai-btn');
+  if (!btn || btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = t('aiThinking');
+  setSync('busy');
+  try {
+    const out = await callKitchenAI('suggest', { prompt: buildPrompt() });
+    ideaSuggestion = (out && out.text) ? String(out.text).trim() : '';
+    setSync('ok');
+    renderIdea();               // 结果进 state 后整块重画，滚动位置由浏览器保持
+  } catch (e) {
+    setSync('err');
+    btn.disabled = false; btn.textContent = label;
+    alert(t('aiFailed', e.message));
   }
 }
 

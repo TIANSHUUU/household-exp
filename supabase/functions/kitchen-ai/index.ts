@@ -69,7 +69,12 @@ async function verifyUser(req: Request): Promise<boolean> {
 
 // ── 供应商适配器：同一个签名，换供应商不影响调用方 ──
 
-async function callGemini(system: string, user: string): Promise<string> {
+// opts.json = true 时要求模型只吐 JSON（translate 用），false 时要自由文本
+// （suggest 用）。这个开关必须有——responseMimeType 写死成 application/json
+// 的话，创意建议会被逼成 JSON，读起来像机器报表。
+type LLMOpts = { json?: boolean; temperature?: number };
+
+async function callGemini(system: string, user: string, opts: LLMOpts = {}): Promise<string> {
   const key = Deno.env.get('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY 未配置');
   // 默认用别名而不是具体版本号。免费档的模型换代很快——2026-08-03 实测
@@ -84,7 +89,10 @@ async function callGemini(system: string, user: string): Promise<string> {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+        generationConfig: {
+          ...(opts.json === false ? {} : { responseMimeType: 'application/json' }),
+          temperature: opts.temperature == null ? 0.2 : opts.temperature,
+        },
       }),
     },
   );
@@ -95,7 +103,7 @@ async function callGemini(system: string, user: string): Promise<string> {
   return text;
 }
 
-async function callAnthropic(system: string, user: string): Promise<string> {
+async function callAnthropic(system: string, user: string, opts: LLMOpts = {}): Promise<string> {
   const key = Deno.env.get('ANTHROPIC_API_KEY');
   if (!key) throw new Error('ANTHROPIC_API_KEY 未配置');
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -108,6 +116,7 @@ async function callAnthropic(system: string, user: string): Promise<string> {
     body: JSON.stringify({
       model: 'claude-haiku-4-5',
       max_tokens: 4096,
+      temperature: opts.temperature == null ? 0.2 : opts.temperature,
       system,
       messages: [{ role: 'user', content: user }],
     }),
@@ -119,10 +128,10 @@ async function callAnthropic(system: string, user: string): Promise<string> {
   return text;
 }
 
-function callLLM(system: string, user: string): Promise<string> {
+function callLLM(system: string, user: string, opts: LLMOpts = {}): Promise<string> {
   return (Deno.env.get('PROVIDER') || 'gemini') === 'anthropic'
-    ? callAnthropic(system, user)
-    : callGemini(system, user);
+    ? callAnthropic(system, user, opts)
+    : callGemini(system, user, opts);
 }
 
 // ── 日限额 ──
@@ -172,7 +181,7 @@ async function doTranslate(payload: any) {
     tags: recipe.tags || [],
   }, null, 2)}`;
 
-  const raw = await callLLM(TRANSLATE_SYSTEM, user);
+  const raw = await callLLM(TRANSLATE_SYSTEM, user, { json: true, temperature: 0.2 });
   let parsed: any;
   try {
     parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
@@ -187,6 +196,37 @@ async function doTranslate(payload: any) {
     steps: Array.isArray(parsed.steps) ? parsed.steps.map((s: any) => String(s)) : [],
     tags: parsed.tags && typeof parsed.tags === 'object' ? parsed.tags : {},
   };
+}
+
+// ── suggest ──
+// 前端把拼好的 prompt 直接发过来（`assets/recipe.js` 的 buildPrompt），
+// 这里只负责调模型。**一份 prompt 两个去处**：复制到剪贴板给 Claude 的，
+// 和送进这里的，是同一段文字。函数里再拼一份的话，改了一处忘了另一处
+// 就会各说各话，而这种不一致很难被发现。
+//
+// 代价是改 prompt 要动前端（要 bump 缓存版本号）而不是只重部署函数。
+// 这个仓库两者都是一条命令，不构成问题。
+
+const SUGGEST_SYSTEM = `You are a practical home-cooking companion helping a couple decide what to cook.
+
+Rules:
+- Reply in the SAME language as the user's message. If they write Chinese, answer in Chinese.
+- PLAIN TEXT ONLY. No markdown: no **bold**, no #headings, no leading - or * bullets, no tables.
+  Separate ideas with blank lines. When naming a dish, put it at the start of its own line
+  followed by a colon and a one or two sentence description.
+- Be concrete and cookable. Name real dishes, say roughly how they're made in one or two sentences.
+- Prefer ideas that genuinely use what they already have. Don't suggest something that needs
+  five things they don't have.
+- If one or two cheap extra purchases would open up a lot more options, say so at the end.
+- Keep the whole reply under about 350 words. They are reading this on a phone.`;
+
+async function doSuggest(payload: any) {
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt.trim() : '';
+  if (!prompt) throw new Error('没有收到 prompt');
+  // 上限防呆：食谱库再大也不该有这么长，超了多半是前端出了问题
+  if (prompt.length > 20000) throw new Error('prompt 过长');
+  // temperature 比翻译高得多——这里要的是发散，不是精确复述
+  return { text: await callLLM(SUGGEST_SYSTEM, prompt, { json: false, temperature: 0.9 }) };
 }
 
 // ── 入口 ──
@@ -204,13 +244,21 @@ Deno.serve(async (req) => {
 
   let body: any;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'bad_json' }, 400); }
-  if (body?.action !== 'translate') return json({ ok: false, error: 'unknown_action' }, 400);
 
+  const action = body?.action;
+  if (action !== 'translate' && action !== 'suggest') {
+    return json({ ok: false, error: 'unknown_action' }, 400);
+  }
+
+  // 两个 action 共用同一个日限额计数器——它护的是 API 账单，不分用途。
   const usage = await bumpUsage();
   if (!usage.ok) return json({ ok: false, error: 'rate_limited' }, 429);
 
   try {
-    return json({ ok: true, data: await doTranslate(body.payload) });
+    const data = action === 'translate'
+      ? await doTranslate(body.payload)
+      : await doSuggest(body.payload);
+    return json({ ok: true, data });
   } catch (e) {
     return json({ ok: false, error: 'provider_error', detail: String((e as Error).message).slice(0, 300) }, 502);
   }

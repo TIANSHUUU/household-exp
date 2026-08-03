@@ -430,3 +430,15 @@ body {
 }
 .picker-item:hover { background: #F5EFE3; border-color: var(--terracotta); }
 .picker-new { color: var(--muted); border-style: dashed; }
+
+/* ── ✨ AI 灵感的输出 ── */
+/* 纯文本渲染：prompt 里要求模型别用 markdown，这里用 pre-wrap 保住换行和
+   空行分段。刻意不写 markdown 渲染器——模型返回的内容进 innerHTML 是个
+   XSS 面，纯文本 + escHtml 没这个问题。 */
+.ai-out {
+  white-space: pre-wrap;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; margin: 18px 0 6px;
+  font-size: 15px; line-height: 1.75; color: var(--ink);
+  box-shadow: var(--shadow);
+}

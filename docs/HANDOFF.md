@@ -32,16 +32,18 @@
 
 ### 已完成
 
-**一期（纯前端）** —— 食谱 CRUD、图片上传、食材搜索、冰箱分桶匹配、购物清单联动（未做，见下）、15 秒轮询同步。全部实测通过。
+**一期（纯前端）** —— 食谱 CRUD、图片上传、食材搜索、冰箱分桶匹配、15 秒轮询同步。全部实测通过。
 
 **双语（A + B）** —— 界面中英切换（82 个文案 key 两边对齐）、内容双语存储、编辑器中文/EN 双页签、缺失自动回退。已上线。
 
 **双语（C）自动翻译** —— 已全部上线，Edge Function 2026-08-03 部署完成。见第四节。
 
+**购物清单联动** —— 2026-08-03 上线。冰箱页「再买 N 样」每行可一键写进 `shopping_items`。见 `docs/superpowers/specs/2026-08-03-shopping-list-link-design.md`。
+
+**✨ AI 灵感** —— 2026-08-03 上线。灵感页把 `buildPrompt()` 拼好的 prompt 送给 Edge Function 的 `suggest` action，结果就地展开。和「📋 复制给 Claude 提问」并排——后者免费且模型更强，前者胜在手机上一点就出。
+
 ### 未做（有意的）
 
-- **购物清单联动**（原三期）：分桶结果里「再买 X + Y」一键写进 `shopping_items`。设计在一期 spec 里，没实现。
-- **✨ 创意建议**：Edge Function 的 `suggest` action。目前只实现了 `translate`。替代方案是灵感页的「📋 复制给 Claude 提问」按钮（已上线可用）。
 - 评分、心得笔记、烹饪时间、难度、来源链接、每步配图、深色模式、第三种语言。用户明确砍掉的，别自作主张加回来。
 
 ### 关键文档
@@ -185,6 +187,19 @@ curl -s -X POST "$FN" -H "apikey: $K" -H "Authorization: Bearer $TOK" \
 
 然后去网页编辑「Bill 松饼」，点「🌐 翻译到英文」，**人工抽验计量单位和烹饪术语**——prompt 里明确要求数字和单位原样保留（180g 必须还是 180g，不许换算），这是最容易出错的地方。
 
+### 两个 action
+
+| action | 谁调 | 输入 → 输出 | LLM 参数 |
+|---|---|---|---|
+| `translate` | 编辑器的「🌐 翻译到…」 | `{from,to,recipe}` → 结构化 JSON | `json: true`, `temperature: 0.2` |
+| `suggest` | 灵感页的「✨ AI 灵感」 | `{prompt}` → `{text}` 纯文本 | `json: false`, `temperature: 0.9` |
+
+**`json` 这个开关必须有。** Gemini 适配器原来把 `responseMimeType: 'application/json'` 写死了——不关掉的话创意建议会被逼成 JSON，读起来像机器报表。
+
+**`suggest` 收的是前端拼好的 prompt，不是结构化数据**（偏离了一期 spec 的原设计）。理由：那段 prompt 已经在 `buildPrompt()` 里写好且是双语的，函数里再拼一份的话，「📋 复制给 Claude」复制走的和 ✨ 送出去的会是两段不同的文字，改了一处忘了另一处就各说各话。发现成的 prompt 则天然一致，输出语言跟界面语言走也自动成立。代价是改 prompt 要动前端（记得 bump `?v=`）。
+
+**两个 action 共用同一个 `DAILY_CAP` 计数器**，它护的是 API 账单，不分用途。所以 `err_rate_limited` 的文案是中性的，别改回「翻译次数用完了」。
+
 ---
 
 ## 五、待处理问题
@@ -215,8 +230,8 @@ name → name_zh,  ingredients → ingredients_zh,  steps → steps_zh
 **已落地的根治方案**：`recipe.html` 里两处资源链接带版本号，每次改 `assets/` 就手动 bump：
 
 ```html
-<link rel="stylesheet" href="assets/recipe.css?v=2026080310">
-<script src="assets/recipe.js?v=2026080310"></script>
+<link rel="stylesheet" href="assets/recipe.css?v=2026080312">
+<script src="assets/recipe.js?v=2026080312"></script>
 ```
 
 没有构建步骤，所以只能手动维护。**改 `assets/` 却忘了 bump 版本号 = 用户看到半新半旧的页面**，这个坑会反复踩，所以 `CLAUDE.md` 里也写了一条。约定用 `年月日+两位序号`，同一天改多次就 `01`→`02`。
@@ -434,9 +449,15 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 0. ~~和用户确认数据公开可读这件事~~ ✅ 2026-08-03 完成，换成了 Supabase Auth（第九节）
 1. ~~验证并修复手机端空白~~ ✅ 2026-08-03 完成
 2. ~~部署 Edge Function~~ ✅ 2026-08-03 完成
-3. 加 `normalize` action，解决别名表不自动长别名的问题
-4. 购物清单联动（原三期）
-5. `suggest` action（✨ 创意建议）
+3. ~~加 `normalize` action~~ —— **降级不做**。2026-08-03 改成补了一份 145 条的食材词表（`supabase/seed-ingredient-vocab.sql`），零配额零风险地覆盖了绝大多数情况；md 录入那条路本来也会顺手补别名。理由见 `docs/superpowers/specs/2026-08-03-ingredient-vocab-seed-design.md`。
+4. ~~购物清单联动~~ ✅ 2026-08-03 完成
+5. ~~`suggest` action~~ ✅ 2026-08-03 完成
+
+**清单已清空，目前没有待办。** 下一步做什么由用户决定。
+
+用户明确砍掉、别自作主张加回来的：评分、心得笔记、烹饪时间、难度、来源链接、每步配图、深色模式、第三种语言。
+
+**目前没有待办。** 下一步做什么由用户决定。
 
 ---
 
