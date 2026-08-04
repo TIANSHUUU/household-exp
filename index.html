@@ -825,7 +825,7 @@ async function loadExpenses() {
   }
 }
 
-// Poll every 30s — follow the active cycle, only re-render on change
+// Poll every 15s — follow the active cycle, only re-render on change
 function startPolling() {
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
