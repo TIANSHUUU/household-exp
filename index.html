@@ -244,7 +244,10 @@
       color: var(--accent); font-weight: 600;
     }
     .amt-row { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
-    .ccy-select { appearance: none; -webkit-appearance: none; text-align: center; cursor: pointer; }
+    /* 左右内边距压到 4px：最长的选项「RON 罗马尼亚」在 16px 下约 97px，用 .finput
+       原本的 14px 内边距只剩 89px 可用，闭合态会被截断。字号保持 16px 不能再小——
+       iOS 上 select 字号低于 16px 会在聚焦时把整页放大。 */
+    .ccy-select { appearance: none; -webkit-appearance: none; text-align: center; cursor: pointer; padding-left: 4px; padding-right: 4px; }
     .fx-box {
       display: none; margin-top: 8px; padding: 10px 12px;
       background: rgba(0,122,255,0.06); border: 1.5px solid rgba(0,122,255,0.18);
