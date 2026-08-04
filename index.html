@@ -861,6 +861,77 @@ function fillCurrencySelect() {
     currencyList().map(c => `<option value="${c.code}">${c.code} ${c.name}</option>`).join('');
 }
 
+// 慢请求可能在新请求之后才返回，会把新结果覆盖掉。每次发请求递增 fxSeq，
+// 回来时对不上就丢弃。旅行时快速连点几个币种一定会撞上。
+let fxSeq = 0;
+
+function curCcy()  { return document.getElementById('f-ccy').value; }
+function curRate() { return parseFloat(document.getElementById('f-rate').value); }
+
+function setFxNote(text, isErr) {
+  const el = document.getElementById('fx-note');
+  el.textContent = text || '';
+  el.classList.toggle('err', !!isErr);
+}
+
+// 展开/收起汇率行，返回当前是不是外币。
+function syncFxBox() {
+  const ccy = curCcy();
+  const on  = !!ccy && ccy !== 'AUD';
+  document.getElementById('fx-box').classList.toggle('on', on);
+  document.getElementById('fx-ccy').textContent = ccy || '—';
+  return on;
+}
+
+function updateFxPreview() {
+  const amt = parseFloat(document.getElementById('f-amount').value);
+  const aud = convertToAud(amt, curRate());
+  document.getElementById('fx-preview').textContent =
+    aud == null ? '≈ A$—' : `≈ A$${fmt(aud)}`;
+}
+
+// force = true 时跳过缓存重拉（↻ 按钮用）。
+async function loadRate(force) {
+  if (!syncFxBox()) { setFxNote(''); return; }
+  const date = document.getElementById('f-date').value;
+  const ccy  = curCcy();
+  if (!date) return;
+
+  const cached = force ? null : fxCacheGet(date, ccy);
+  if (cached != null) {
+    document.getElementById('f-rate').value = cached;
+    setFxNote(''); updateFxPreview(); return;
+  }
+
+  const seq = ++fxSeq;
+  const btn = document.getElementById('fx-refresh');
+  btn.disabled = true;
+  setFxNote('正在获取汇率…');
+  try {
+    const res = await fetchRate(date, ccy);
+    if (seq !== fxSeq) return;
+    if (!res) throw new Error('no rate');
+    fxCacheSet(date, ccy, res.rate);
+    document.getElementById('f-rate').value = res.rate;
+    const noteDate = fxNoteDate(date, res.date);
+    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天休市）` : '');
+  } catch (err) {
+    if (seq !== fxSeq) return;
+    console.error(err);
+    document.getElementById('f-rate').value = '';
+    setFxNote(`没查到 ${ccy} 的汇率，请手动填写`, true);
+  } finally {
+    // finally 在提前 return 时也会跑，但只有最新那次请求才该动 UI
+    if (seq === fxSeq) { btn.disabled = false; updateFxPreview(); }
+  }
+}
+
+function onCcyChange()   { localStorage.setItem(CCY_KEY, curCcy()); loadRate(false); }
+function onDateChange()  { loadRate(false); }
+function onAmountInput() { updateFxPreview(); }
+function onRateInput()   { setFxNote(''); updateFxPreview(); }
+function refreshRate()   { loadRate(true); }
+
 // ── Sync dot ──
 function setSyncDot(s) {
   const d = document.getElementById('sync-dot');
