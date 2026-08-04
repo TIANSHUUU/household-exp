@@ -37,7 +37,7 @@ def defined_in(src):
 KEYWORDS = set('''
 if for while switch catch return typeof await async var of in new delete void yield
 fetch parseInt parseFloat String Number Boolean Array Object JSON Math Date Set Map Promise
-setTimeout setInterval clearTimeout clearInterval alert confirm prompt console isNaN
+setTimeout setInterval clearTimeout clearInterval alert confirm prompt console isNaN isFinite
 encodeURIComponent decodeURIComponent atob btoa RegExp Error createImageBitmap URL Intl
 '''.split())
 

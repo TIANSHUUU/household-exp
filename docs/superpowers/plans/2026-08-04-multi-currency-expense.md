@@ -136,7 +136,13 @@ assert.strictEqual(fmtOrig(20, 'SGD'),     'SGD 20.00',  '新元不能显示成 
 assert.strictEqual(fmtOrig(88, 'CNY'),     'CNY 88.00',  '人民币不能显示成 ¥，会跟日元撞');
 assert.strictEqual(fmtOrig(100, ''),       '',           '没有币种就不显示');
 assert.strictEqual(fmtOrig(null, 'JPY'),   '',           '没有金额就不显示');
-assert.strictEqual(fmtOrig(100, 'ZZZ'),    'ZZZ 100',    '非法币种代码不能让整行渲染抛错');
+// ICU 插的是 U+00A0，fmtOrig 归一成普通空格。这条守着那个归一——去掉 replace
+// 就会挂，而肉眼看输出是看不出区别的。
+assert.ok(!fmtOrig(3200, 'JPY').includes('\u00A0'), '输出里不能残留不换行空格');
+// 三个字母但查无此币：Intl 不抛错，正常渲染。不崩就达到目的了。
+assert.strictEqual(fmtOrig(100, 'ZZZ'),    'ZZZ 100.00', '查无此币的合法格式代码照常渲染');
+// 格式非法（不是三个字母）才会抛 RangeError，走 catch 兜底。这条才是真在测 catch 分支。
+assert.strictEqual(fmtOrig(100, 'ZZ'),     'ZZ 100',     '格式非法的代码走兜底，不能让整行渲染抛错');
 
 console.log('✅ orig formatting OK');
 
@@ -275,14 +281,21 @@ function fxCacheKey(date, ccy) {
 
 // 原币显示。currencyDisplay 必须是 'code'：narrowSymbol 会把 USD 和 SGD 都渲染成
 // $，跟同一行旁边的澳币撞车，而 ¥ 在日元和人民币之间也有歧义。
+// ⚠️ ICU 在币种代码和数字之间插的是 U+00A0 不换行空格，不是普通空格。归一成普通
+// 空格，输出才在 node 和各浏览器的不同 ICU 版本之间稳定（断言也才好写）。
 function fmtOrig(amount, ccy) {
   const a = Number(amount);
   if (!ccy || amount == null || !isFinite(a)) return '';
   try {
     return new Intl.NumberFormat('en-AU',
-      { style:'currency', currency: ccy, currencyDisplay:'code' }).format(a);
+      { style:'currency', currency: ccy, currencyDisplay:'code' }).format(a)
+      .replace(/\u00A0/g, ' ');
   } catch (err) {
-    return ccy + ' ' + a;    // 非法币种代码不该让整行渲染崩掉
+    // 走到这里的只有**格式非法**的代码（不是三个字母，如 'ZZ'），Intl 抛 RangeError。
+    // 三个字母但查无此币（'ZZZ'）并不抛错，会渲染成 'ZZZ 100.00'——那也没问题，
+    // 这里要防的只是「整行渲染崩掉」，不是校验币种真伪。而且 orig_currency 只可能
+    // 来自上面的 CURRENCIES，真伪校验在这里属于没人会用到的机器。
+    return ccy + ' ' + a;
   }
 }
 
