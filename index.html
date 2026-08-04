@@ -662,6 +662,112 @@ let undoTimer    = null;
 const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
 const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type, cycle_id: activeCycle ? activeCycle.id : null });
 
+// ── PURE LOGIC START ──
+// 这一段不碰 DOM 也不碰网络。scripts/verify-fx-logic.js 会把它切出来 eval 跑断言，
+// 是这个仓库里唯一能自动验证的部分。改这里请保持无副作用，加新函数就顺手加断言。
+//
+// ⚠️ 非严格模式的直接 eval 里只有 function 声明会跨出 eval 作用域，const/let 不会。
+// 所以对外可见的东西一律写成 function；CURRENCIES 是 const，靠 currencyList() 的
+// 闭包暴露出去。写成 const currencyList = () => ... 会让验证脚本直接报未定义。
+
+// api.frankfurter.dev 支持的全部 30 种（欧央行口径）。AUD 置顶，后面按旅行常用度排，
+// 剩下的按字母序。中文名限 4 字以内——下拉框在手机上只有 120px。
+// ⚠️ 这里没有的币种（越南盾、新台币、迪拉姆…）走手填汇率那条路，不要往这个表里加
+// 假条目，选中了却拉不到汇率反而更糟。
+const CURRENCIES = [
+  { code:'AUD', name:'澳元'   }, { code:'JPY', name:'日元'   },
+  { code:'KRW', name:'韩元'   }, { code:'THB', name:'泰铢'   },
+  { code:'SGD', name:'新元'   }, { code:'MYR', name:'林吉特' },
+  { code:'IDR', name:'印尼盾' }, { code:'PHP', name:'比索'   },
+  { code:'CNY', name:'人民币' }, { code:'HKD', name:'港币'   },
+  { code:'USD', name:'美元'   }, { code:'NZD', name:'纽元'   },
+  { code:'EUR', name:'欧元'   }, { code:'GBP', name:'英镑'   },
+  { code:'CHF', name:'瑞郎'   }, { code:'CAD', name:'加元'   },
+  { code:'BRL', name:'雷亚尔' }, { code:'CZK', name:'捷克'   },
+  { code:'DKK', name:'丹麦'   }, { code:'HUF', name:'匈牙利' },
+  { code:'ILS', name:'以色列' }, { code:'INR', name:'印度'   },
+  { code:'ISK', name:'冰岛'   }, { code:'MXN', name:'墨西哥' },
+  { code:'NOK', name:'挪威'   }, { code:'PLN', name:'波兰'   },
+  { code:'RON', name:'罗马尼亚' }, { code:'SEK', name:'瑞典' },
+  { code:'TRY', name:'土耳其' }, { code:'ZAR', name:'南非'   },
+];
+function currencyList() { return CURRENCIES; }
+
+// 原币金额 × 汇率 → AUD，两位小数。任何一个参数不合法都返回 null 而不是 NaN——
+// NaN 会一路写进数据库，是最难查的一类脏数据。
+function convertToAud(origAmount, rate) {
+  const a = Number(origAmount), r = Number(rate);
+  if (!isFinite(a) || !isFinite(r) || a <= 0 || r <= 0) return null;
+  return Math.round(a * r * 100) / 100;
+}
+
+function fxCacheKey(date, ccy) {
+  return String(date) + '|' + String(ccy).toUpperCase();
+}
+
+// 原币显示。currencyDisplay 必须是 'code'：narrowSymbol 会把 USD 和 SGD 都渲染成
+// $，跟同一行旁边的澳币撞车，而 ¥ 在日元和人民币之间也有歧义。
+// ⚠️ 两处 ICU 坑：(1) 币种代码和数字之间插的是不是普通空格不一致（Node 自带的
+// ICU 用的是 U+00A0 不换行空格），统一替换成普通空格；(2) 对 'ZZZ' 这类语法上
+// 合法但根本不存在的三字母代码，NumberFormat 并不会抛错，只会当成没有小数位数据、
+// 默认给两位小数，所以不能只靠 try/catch 判断合法性，要先查
+// Intl.supportedValuesOf('currency') 这张真实 ISO 4217 表。
+function fmtOrig(amount, ccy) {
+  const a = Number(amount);
+  if (!ccy || amount == null || !isFinite(a)) return '';
+  const code = String(ccy).toUpperCase();
+  try {
+    if (typeof Intl.supportedValuesOf === 'function' &&
+        !Intl.supportedValuesOf('currency').includes(code)) {
+      throw new Error('unsupported currency code');
+    }
+    return new Intl.NumberFormat('en-AU',
+      { style:'currency', currency: ccy, currencyDisplay:'code' }).format(a)
+      .replace(/\u00A0/g, ' ');
+  } catch (err) {
+    return ccy + ' ' + a;    // 非法币种代码不该让整行渲染崩掉
+  }
+}
+
+// frankfurter 的响应 → { rate, date } 或 null。date 是它实际给的那天，
+// 周末和节假日会回退到上一个工作日。
+function parseFxResponse(json) {
+  if (!json || !json.rates) return null;
+  const rate = json.rates.AUD;
+  if (typeof rate !== 'number' || !isFinite(rate) || rate <= 0) return null;
+  return { rate: rate, date: json.date || '' };
+}
+
+// 汇率取的不是你选的那天就返回真实日期，否则 null。不能闷声换掉——
+// 用户后来对流水时会奇怪为什么汇率跟那天的不一样。
+function fxNoteDate(requestedDate, actualDate) {
+  if (!actualDate || actualDate === requestedDate) return null;
+  return actualDate;
+}
+
+// 提交前校验。返回 { ok, error }，error 直接拿去 alert。
+function validateExpenseInput(v) {
+  if (!v.date) return { ok:false, error:'请填写日期' };
+  if (!v.desc) return { ok:false, error:'请填写描述' };
+  const amt = Number(v.origAmount);
+  if (!isFinite(amt) || amt <= 0) return { ok:false, error:'请填写有效金额' };
+  if (v.ccy && v.ccy !== 'AUD') {
+    const r = Number(v.rate);
+    if (!isFinite(r) || r <= 0) return { ok:false, error:'没查到汇率，请手动填写汇率' };
+  }
+  return { ok:true, error:'' };
+}
+
+// 15 秒轮询用它判断要不要重渲染。两边（数据库行 / toDB 的输出）都走这一个函数。
+// 数字统一过 Number()：PostgREST 可能把 numeric 回成字符串，不归一的话
+// "40.00" 和 40 会被当成不同记录，每 15 秒无脑重渲染一次。
+function expenseSig(r) {
+  const n = x => (x == null || x === '') ? '' : String(Number(x));
+  return [r.id, n(r.amount), r.description, r.type, r.date,
+          r.orig_currency || '', n(r.orig_amount)].join(':');
+}
+// ── PURE LOGIC END ──
+
 // ── Sync dot ──
 function setSyncDot(s) {
   const d = document.getElementById('sync-dot');
