@@ -822,6 +822,45 @@ function expenseSig(r) {
 }
 // ── PURE LOGIC END ──
 
+// ── FX rates ──
+// ⚠️ 这是第三方 API，不是 Supabase。**绝对不要给它带 await H()**——
+// 那会把登录令牌泄露给 frankfurter.dev。整个仓库只有这一处 fetch 不带 H()。
+const FX_API   = 'https://api.frankfurter.dev/v1';   // 旧域名 .app 现在 301 跳转，别用
+const FX_CACHE = 'hh_fx';
+const CCY_KEY  = 'hh_last_ccy';
+
+function fxCacheRead() {
+  try { return JSON.parse(localStorage.getItem(FX_CACHE) || '{}'); } catch (e) { return {}; }
+}
+// 历史汇率不可变，所以缓存零风险、只增不删。一年几百个 key、几 KB，不用做淘汰。
+function fxCacheGet(date, ccy) {
+  const v = fxCacheRead()[fxCacheKey(date, ccy)];
+  return typeof v === 'number' ? v : null;
+}
+function fxCacheSet(date, ccy, rate) {
+  const c = fxCacheRead();
+  c[fxCacheKey(date, ccy)] = rate;
+  try { localStorage.setItem(FX_CACHE, JSON.stringify(c)); } catch (e) {}
+}
+
+// 返回 { rate, date } 或 null。date 是 API 实际给的那天。
+async function fetchRate(date, ccy) {
+  const r = await fetch(`${FX_API}/${date}?base=${encodeURIComponent(ccy)}&symbols=AUD`);
+  if (!r.ok) throw new Error('fx ' + r.status);
+  return parseFxResponse(await r.json());
+}
+
+// 上次用的货币。存的值可能是老版本留下的、现在不在表里的代码，所以要校验。
+function lastCcy() {
+  const c = localStorage.getItem(CCY_KEY);
+  return currencyList().some(x => x.code === c) ? c : 'AUD';
+}
+
+function fillCurrencySelect() {
+  document.getElementById('f-ccy').innerHTML =
+    currencyList().map(c => `<option value="${c.code}">${c.code} ${c.name}</option>`).join('');
+}
+
 // ── Sync dot ──
 function setSyncDot(s) {
   const d = document.getElementById('sync-dot');
@@ -831,6 +870,7 @@ function setSyncDot(s) {
 // ── Init ──
 async function initApp() {
   showLoading(true);
+  fillCurrencySelect();
   loadCfg();
   await loadExpenses();
   startPolling();
