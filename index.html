@@ -243,6 +243,33 @@
       border-color: var(--accent); background: rgba(0,122,255,0.08);
       color: var(--accent); font-weight: 600;
     }
+    .amt-row { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
+    /* 左右内边距压到 4px：最长的选项「RON 罗马尼亚」在 16px 下约 97px，用 .finput
+       原本的 14px 内边距只剩 89px 可用，闭合态会被截断。字号保持 16px 不能再小——
+       iOS 上 select 字号低于 16px 会在聚焦时把整页放大。 */
+    .ccy-select { appearance: none; -webkit-appearance: none; text-align: center; cursor: pointer; padding-left: 4px; padding-right: 4px; }
+    .fx-box {
+      display: none; margin-top: 8px; padding: 10px 12px;
+      background: rgba(0,122,255,0.06); border: 1.5px solid rgba(0,122,255,0.18);
+      border-radius: 11px;
+    }
+    .fx-box.on { display: block; }
+    .fx-line { display: flex; align-items: center; gap: 6px; }
+    .fx-lbl { font-size: 13px; color: var(--sub); white-space: nowrap; }
+    .fx-input {
+      flex: 1; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border);
+      border-radius: 8px; font-size: 14px; font-family: inherit;
+      background: var(--card); color: var(--text); outline: none;
+    }
+    .fx-input:focus { border-color: var(--accent); }
+    .fx-refresh {
+      background: none; border: none; cursor: pointer; color: var(--accent);
+      font-size: 16px; padding: 2px 4px; line-height: 1;
+    }
+    .fx-refresh:disabled { opacity: 0.4; cursor: default; }
+    .fx-note { font-size: 11px; color: var(--sub); margin-top: 5px; min-height: 14px; }
+    .fx-note.err { color: var(--red); }
+    .fx-preview { font-size: 15px; font-weight: 600; margin-top: 3px; }
     .submit {
       width: 100%; padding: 14px; background: var(--accent); color: #fff;
       border: none; border-radius: 13px; font-size: 16px; font-weight: 600;
@@ -438,11 +465,26 @@
     <div class="sheet-title" id="add-sheet-title">添加开支</div>
     <div class="fgrp">
       <label class="flabel">日期</label>
-      <input type="date" class="finput" id="f-date">
+      <input type="date" class="finput" id="f-date" onchange="onDateChange()">
     </div>
     <div class="fgrp">
-      <label class="flabel">金额 (AUD)</label>
-      <input type="number" class="finput" id="f-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal">
+      <label class="flabel">金额</label>
+      <div class="amt-row">
+        <input type="number" class="finput" id="f-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal" oninput="onAmountInput()">
+        <select class="finput ccy-select" id="f-ccy" onchange="onCcyChange()"></select>
+      </div>
+      <!-- 选了非 AUD 才展开。汇率格永远可以手改：现金换汇的实际汇率跟欧央行
+           中间价差不少，而且这也是不支持币种（越南盾、新台币）的唯一入口。 -->
+      <div class="fx-box" id="fx-box">
+        <div class="fx-line">
+          <span class="fx-lbl">1 <span id="fx-ccy">—</span> =</span>
+          <input type="number" class="fx-input" id="f-rate" step="any" min="0" inputmode="decimal" oninput="onRateInput()">
+          <span class="fx-lbl">AUD</span>
+          <button type="button" class="fx-refresh" id="fx-refresh" onclick="refreshRate()" title="重新获取汇率">↻</button>
+        </div>
+        <div class="fx-note" id="fx-note"></div>
+        <div class="fx-preview" id="fx-preview">≈ A$—</div>
+      </div>
     </div>
     <div class="fgrp">
       <label class="flabel">描述</label>
@@ -659,8 +701,238 @@ let pendingDelId = null;
 let pendingDelRow = null;
 let undoTimer    = null;
 
-const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
-const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type, cycle_id: activeCycle ? activeCycle.id : null });
+// origCcy 为 null 表示这笔本来就是 AUD 记的（老数据三列全 NULL，不需要迁移）。
+// amount 永远是换算后的 AUD——分账、账期结转、往期记录读的都是它，语义不能变。
+const toLocal = r => ({
+  id: Number(r.id), date: r.date, amount: parseFloat(r.amount),
+  desc: r.description, type: r.type,
+  origCcy:    r.orig_currency || null,
+  origAmount: r.orig_amount == null ? null : parseFloat(r.orig_amount),
+  fxRate:     r.fx_rate     == null ? null : parseFloat(r.fx_rate),
+});
+const toDB = e => ({
+  id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type,
+  cycle_id: activeCycle ? activeCycle.id : null,
+  orig_currency: e.origCcy    || null,
+  orig_amount:   e.origAmount == null ? null : e.origAmount,
+  fx_rate:       e.fxRate     == null ? null : e.fxRate,
+});
+
+// ── PURE LOGIC START ──
+// 这一段不碰 DOM 也不碰网络。scripts/verify-fx-logic.js 会把它切出来 eval 跑断言，
+// 是这个仓库里唯一能自动验证的部分。改这里请保持无副作用，加新函数就顺手加断言。
+//
+// ⚠️ 非严格模式的直接 eval 里只有 function 声明会跨出 eval 作用域，const/let 不会。
+// 所以对外可见的东西一律写成 function；CURRENCIES 是 const，靠 currencyList() 的
+// 闭包暴露出去。写成 const currencyList = () => ... 会让验证脚本直接报未定义。
+
+// api.frankfurter.dev 支持的全部 30 种（欧央行口径）。AUD 置顶，后面按旅行常用度排，
+// 剩下的按字母序。中文名限 4 字以内——下拉框在手机上只有 120px。
+// ⚠️ 这里没有的币种（越南盾、新台币、迪拉姆…）走手填汇率那条路，不要往这个表里加
+// 假条目，选中了却拉不到汇率反而更糟。
+const CURRENCIES = [
+  { code:'AUD', name:'澳元'   }, { code:'JPY', name:'日元'   },
+  { code:'KRW', name:'韩元'   }, { code:'THB', name:'泰铢'   },
+  { code:'SGD', name:'新元'   }, { code:'MYR', name:'林吉特' },
+  { code:'IDR', name:'印尼盾' }, { code:'PHP', name:'比索'   },
+  { code:'CNY', name:'人民币' }, { code:'HKD', name:'港币'   },
+  { code:'USD', name:'美元'   }, { code:'NZD', name:'纽元'   },
+  { code:'EUR', name:'欧元'   }, { code:'GBP', name:'英镑'   },
+  { code:'CHF', name:'瑞郎'   }, { code:'CAD', name:'加元'   },
+  { code:'BRL', name:'雷亚尔' }, { code:'CZK', name:'捷克'   },
+  { code:'DKK', name:'丹麦'   }, { code:'HUF', name:'匈牙利' },
+  { code:'ILS', name:'以色列' }, { code:'INR', name:'印度'   },
+  { code:'ISK', name:'冰岛'   }, { code:'MXN', name:'墨西哥' },
+  { code:'NOK', name:'挪威'   }, { code:'PLN', name:'波兰'   },
+  { code:'RON', name:'罗马尼亚' }, { code:'SEK', name:'瑞典' },
+  { code:'TRY', name:'土耳其' }, { code:'ZAR', name:'南非'   },
+];
+function currencyList() { return CURRENCIES.slice(); }
+
+// 原币金额 × 汇率 → AUD，两位小数。任何一个参数不合法都返回 null 而不是 NaN——
+// NaN 会一路写进数据库，是最难查的一类脏数据。
+function convertToAud(origAmount, rate) {
+  const a = Number(origAmount), r = Number(rate);
+  if (!isFinite(a) || !isFinite(r) || a <= 0 || r <= 0) return null;
+  // 恰好落在半分上的（29 @ 0.005 精确值 0.145）会因浮点表示往下取，差 1 分。
+  // 实测这是唯一一类偏差，占比 0.06%，两人分账差 1 分不值得上整数分币的机器。
+  return Math.round(a * r * 100) / 100;
+}
+
+function fxCacheKey(date, ccy) {
+  return String(date) + '|' + String(ccy).toUpperCase();
+}
+
+// 原币显示。currencyDisplay 必须是 'code'：narrowSymbol 会把 USD 和 SGD 都渲染成
+// $，跟同一行旁边的澳币撞车，而 ¥ 在日元和人民币之间也有歧义。
+// ⚠️ ICU 在币种代码和数字之间插的是 U+00A0 不换行空格，不是普通空格。归一成普通
+// 空格，输出才在 node 和各浏览器的不同 ICU 版本之间稳定（断言也才好写）。
+function fmtOrig(amount, ccy) {
+  const a = Number(amount);
+  if (!ccy || amount == null || amount === '' || !isFinite(a)) return '';
+  try {
+    return new Intl.NumberFormat('en-AU',
+      { style:'currency', currency: ccy, currencyDisplay:'code' }).format(a)
+      .replace(/\u00A0/g, ' ');
+  } catch (err) {
+    // 只有格式非法的代码（非三个字母，如 'ZZ'）才会走到这——Intl 对 'ZZZ' 这种
+    // 三个字母但查无此币的代码并不抛错，会正常渲染成 'ZZZ 100.00'。
+    return ccy + ' ' + a;
+  }
+}
+
+// frankfurter 的响应 → { rate, date } 或 null。date 是它实际给的那天，
+// 周末和节假日会回退到上一个工作日。
+function parseFxResponse(json) {
+  if (!json || !json.rates) return null;
+  const rate = json.rates.AUD;
+  if (typeof rate !== 'number' || !isFinite(rate) || rate <= 0) return null;
+  return { rate: rate, date: json.date || '' };
+}
+
+// 汇率取的不是你选的那天就返回真实日期，否则 null。不能闷声换掉——
+// 用户后来对流水时会奇怪为什么汇率跟那天的不一样。
+function fxNoteDate(requestedDate, actualDate) {
+  if (!actualDate || actualDate === requestedDate) return null;
+  return actualDate;
+}
+
+// 提交前校验。返回 { ok, error }，error 直接拿去 alert。
+function validateExpenseInput(v) {
+  if (!v.date) return { ok:false, error:'请填写日期' };
+  if (!v.desc || !String(v.desc).trim()) return { ok:false, error:'请填写描述' };
+  const amt = Number(v.origAmount);
+  if (!isFinite(amt) || amt <= 0) return { ok:false, error:'请填写有效金额' };
+  const c = String(v.ccy || 'AUD').toUpperCase();
+  if (c !== 'AUD') {
+    const r = Number(v.rate);
+    if (!isFinite(r) || r <= 0) return { ok:false, error:'没查到汇率，请手动填写汇率' };
+  }
+  return { ok:true, error:'' };
+}
+
+// 15 秒轮询用它判断要不要重渲染。两边（数据库行 / toDB 的输出）都走这一个函数。
+// 数字统一过 Number()：PostgREST 可能把 numeric 回成字符串，不归一的话
+// "40.00" 和 40 会被当成不同记录，每 15 秒无脑重渲染一次。
+// ⚠️ 接进轮询之前必须先让 toDB 也输出这三列，否则每 15 秒无脑重渲染。
+function expenseSig(r) {
+  const n = x => (x == null || x === '') ? '' : String(Number(x));
+  return [r.id, n(r.amount), r.description, r.type, r.date,
+          r.orig_currency || '', n(r.orig_amount), n(r.fx_rate)].join(':');
+}
+// ── PURE LOGIC END ──
+
+// ── FX rates ──
+// ⚠️ 这是第三方 API，不是 Supabase。**绝对不要给它带 await H()**——
+// 那会把登录令牌泄露给 frankfurter.dev。整个仓库只有这一处 fetch 不带 H()。
+const FX_API   = 'https://api.frankfurter.dev/v1';   // 旧域名 .app 现在 301 跳转，别用
+const FX_CACHE = 'hh_fx';
+const CCY_KEY  = 'hh_last_ccy';
+
+function fxCacheRead() {
+  try { return JSON.parse(localStorage.getItem(FX_CACHE) || '{}'); } catch (e) { return {}; }
+}
+// 历史汇率不可变，所以缓存零风险、只增不删。一年几百个 key、几 KB，不用做淘汰。
+function fxCacheGet(date, ccy) {
+  const v = fxCacheRead()[fxCacheKey(date, ccy)];
+  return typeof v === 'number' ? v : null;
+}
+function fxCacheSet(date, ccy, rate) {
+  const c = fxCacheRead();
+  c[fxCacheKey(date, ccy)] = rate;
+  try { localStorage.setItem(FX_CACHE, JSON.stringify(c)); } catch (e) {}
+}
+
+// 返回 { rate, date } 或 null。date 是 API 实际给的那天。
+async function fetchRate(date, ccy) {
+  const r = await fetch(`${FX_API}/${date}?base=${encodeURIComponent(ccy)}&symbols=AUD`);
+  if (!r.ok) throw new Error('fx ' + r.status);
+  return parseFxResponse(await r.json());
+}
+
+// 上次用的货币。存的值可能是老版本留下的、现在不在表里的代码，所以要校验。
+function lastCcy() {
+  const c = localStorage.getItem(CCY_KEY);
+  return currencyList().some(x => x.code === c) ? c : 'AUD';
+}
+
+function fillCurrencySelect() {
+  document.getElementById('f-ccy').innerHTML =
+    currencyList().map(c => `<option value="${c.code}">${c.code} ${c.name}</option>`).join('');
+}
+
+// 慢请求可能在新请求之后才返回，会把新结果覆盖掉。每次发请求递增 fxSeq，
+// 回来时对不上就丢弃。旅行时快速连点几个币种一定会撞上。
+let fxSeq = 0;
+
+function curCcy()  { return document.getElementById('f-ccy').value; }
+function curRate() { return parseFloat(document.getElementById('f-rate').value); }
+
+function setFxNote(text, isErr) {
+  const el = document.getElementById('fx-note');
+  el.textContent = text || '';
+  el.classList.toggle('err', !!isErr);
+}
+
+// 展开/收起汇率行，返回当前是不是外币。
+function syncFxBox() {
+  const ccy = curCcy();
+  const on  = !!ccy && ccy !== 'AUD';
+  document.getElementById('fx-box').classList.toggle('on', on);
+  document.getElementById('fx-ccy').textContent = ccy || '—';
+  return on;
+}
+
+function updateFxPreview() {
+  const amt = parseFloat(document.getElementById('f-amount').value);
+  const aud = convertToAud(amt, curRate());
+  document.getElementById('fx-preview').textContent =
+    aud == null ? '≈ A$—' : `≈ A$${fmt(aud)}`;
+}
+
+// force = true 时跳过缓存重拉（↻ 按钮用）。
+async function loadRate(force) {
+  if (!syncFxBox()) { setFxNote(''); return; }
+  const date = document.getElementById('f-date').value;
+  const ccy  = curCcy();
+  if (!date) return;
+
+  const cached = force ? null : fxCacheGet(date, ccy);
+  if (cached != null) {
+    document.getElementById('f-rate').value = cached;
+    setFxNote(''); updateFxPreview(); return;
+  }
+
+  const seq = ++fxSeq;
+  const btn = document.getElementById('fx-refresh');
+  btn.disabled = true;
+  setFxNote('正在获取汇率…');
+  try {
+    const res = await fetchRate(date, ccy);
+    if (seq !== fxSeq) return;
+    if (!res) throw new Error('no rate');
+    fxCacheSet(date, ccy, res.rate);
+    document.getElementById('f-rate').value = res.rate;
+    const noteDate = fxNoteDate(date, res.date);
+    // 不能写「当天休市」。欧央行每天欧洲时间下午才发当日牌价，澳洲白天记当天的账时
+    // 那边还是前一晚——最常见的场景根本没休市，只是牌价还没出。这句话要同时说得通。
+    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天还没有牌价）` : '');
+  } catch (err) {
+    if (seq !== fxSeq) return;
+    console.error(err);
+    document.getElementById('f-rate').value = '';
+    setFxNote(`没查到 ${ccy} 的汇率，请手动填写`, true);
+  } finally {
+    // finally 在提前 return 时也会跑，但只有最新那次请求才该动 UI
+    if (seq === fxSeq) { btn.disabled = false; updateFxPreview(); }
+  }
+}
+
+function onCcyChange()   { localStorage.setItem(CCY_KEY, curCcy()); loadRate(false); }
+function onDateChange()  { loadRate(false); }
+function onAmountInput() { updateFxPreview(); }
+function onRateInput()   { setFxNote(''); updateFxPreview(); }
+function refreshRate()   { loadRate(true); }
 
 // ── Sync dot ──
 function setSyncDot(s) {
@@ -671,6 +943,7 @@ function setSyncDot(s) {
 // ── Init ──
 async function initApp() {
   showLoading(true);
+  fillCurrencySelect();
   loadCfg();
   await loadExpenses();
   startPolling();
@@ -707,7 +980,7 @@ async function loadExpenses() {
   }
 }
 
-// Poll every 30s — follow the active cycle, only re-render on change
+// Poll every 15s — follow the active cycle, only re-render on change
 function startPolling() {
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
@@ -718,7 +991,7 @@ function startPolling() {
         || parseFloat(ac.carryover || 0) !== parseFloat(activeCycle.carryover || 0);
       activeCycle = ac;
       const data = await dbGet(ac.id);
-      const sig = d => d.map(r => `${r.id}:${r.amount}:${r.description}:${r.type}:${r.date}`).join('|');
+      const sig = d => d.map(expenseSig).join('|');
       if (cycleChanged || sig(data) !== sig(expenses.map(toDB))) {
         expenses = data.map(toLocal);
         render();
@@ -792,6 +1065,9 @@ function itemRowHtml(e, readonly) {
   const t = TYPE_META[e.type];
   const amtTxt   = e.type === 'partner_paid' ? `−$${fmt(e.amount)}` : `$${fmt(e.amount)}`;
   const shareTxt = e.type === 'shared' ? `各付 $${fmt(e.amount/2)}` : e.type === 'partner_personal' ? '全额抵扣' : '全额增加';
+  // 只有外币记录才多这一段。AUD 记的行显示和以前一模一样。
+  const origTxt  = e.origCcy ? fmtOrig(e.origAmount, e.origCcy) : '';
+  const subTxt   = origTxt ? `${origTxt} · ${shareTxt}` : shareTxt;
   const actions  = readonly ? '' : `<div class="item-actions">
           <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
           <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
@@ -804,7 +1080,7 @@ function itemRowHtml(e, readonly) {
         </div>
         <div class="item-right">
           <div class="item-amount">${amtTxt}</div>
-          <div class="item-share">${shareTxt}</div>
+          <div class="item-share">${subTxt}</div>
         </div>${actions}
       </div>`;
 }
@@ -834,9 +1110,16 @@ function openAdd() {
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value   = '';
   document.getElementById('ft-shared').checked = true;
+  // 记住上次用的货币：旅行中连记 20 笔不用每次切。代价是回国后第一笔 AUD
+  // 容易忘了切回去——防线是汇率行的底色和实时的「≈ A$」数字。
+  // 用户明确接受这个取舍，别自作主张改成「隔天自动重置」之类的聪明逻辑。
+  document.getElementById('f-ccy').value  = lastCcy();
+  document.getElementById('f-rate').value = '';
+  setFxNote('');
   document.getElementById('add-sheet-title').textContent = '添加开支';
   document.getElementById('add-submit-btn').textContent  = '添加';
   document.getElementById('add-overlay').classList.add('open');
+  loadRate(false);
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
 function openEdit(id) {
@@ -844,9 +1127,17 @@ function openEdit(id) {
   if (!e) return;
   editingId = id;
   document.getElementById('f-date').value   = e.date;
-  document.getElementById('f-amount').value = e.amount;
+  document.getElementById('f-ccy').value    = e.origCcy || 'AUD';
+  // 外币记录回填的是原币金额，不是换算后的 AUD
+  document.getElementById('f-amount').value = e.origCcy ? e.origAmount : e.amount;
+  document.getElementById('f-rate').value   = e.origCcy ? e.fxRate : '';
   document.getElementById('f-desc').value   = e.desc;
   document.querySelector(`input[name="ftype"][value="${e.type}"]`).checked = true;
+  setFxNote('');
+  // 只开合面板，**不重新拉汇率**——那笔账当时用的就是存下来的这个，
+  // 重拉会无声改掉已经记好的账。改了日期或货币才会触发重拉。
+  syncFxBox();
+  updateFxPreview();
   document.getElementById('add-sheet-title').textContent = '编辑开支';
   document.getElementById('add-submit-btn').textContent  = '保存修改';
   document.getElementById('add-overlay').classList.add('open');
@@ -855,22 +1146,38 @@ function openEdit(id) {
 function closeAdd() { editingId = null; document.getElementById('add-overlay').classList.remove('open'); }
 
 async function submitExpense() {
-  const date   = document.getElementById('f-date').value;
-  const amount = parseFloat(document.getElementById('f-amount').value);
-  const desc   = document.getElementById('f-desc').value.trim();
-  const type   = document.querySelector('input[name="ftype"]:checked').value;
-  if (!date || !amount || amount <= 0 || !desc) { alert('请填写所有字段'); return; }
+  const date  = document.getElementById('f-date').value;
+  const desc  = document.getElementById('f-desc').value.trim();
+  const type  = document.querySelector('input[name="ftype"]:checked').value;
+  const ccy   = curCcy();
+  const inAmt = parseFloat(document.getElementById('f-amount').value);
+  const rate  = ccy === 'AUD' ? 1 : curRate();
+
+  const v = validateExpenseInput({ date, desc, origAmount: inAmt, ccy, rate });
+  if (!v.ok) { alert(v.error); return; }
+
+  // amount 永远是 AUD。origCcy 为 null 表示这笔本来就是 AUD 记的。
+  const amount     = ccy === 'AUD' ? inAmt : convertToAud(inAmt, rate);
+  const origCcy    = ccy === 'AUD' ? null  : ccy;
+  const origAmount = ccy === 'AUD' ? null  : inAmt;
+  const fxRate     = ccy === 'AUD' ? null  : rate;
+  // 校验已经拦过一层，这里是最后一道闸——NaN 写进数据库比报错难查得多
+  if (amount == null || amount <= 0) { alert('金额换算失败，请检查金额和汇率'); return; }
+
+  const row = { date, amount, description: desc, type,
+                orig_currency: origCcy, orig_amount: origAmount, fx_rate: fxRate };
+
   const btn = document.getElementById('add-submit-btn');
   btn.disabled = true; setSyncDot('busy');
   try {
     if (editingId !== null) {
-      await dbUpdate(editingId, { date, amount, description: desc, type });
+      await dbUpdate(editingId, row);
       const idx = expenses.findIndex(x => x.id === editingId);
-      if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
+      if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type, origCcy, origAmount, fxRate };
     } else {
       const newId = Date.now();
-      await dbInsert({ id: newId, date, amount, description: desc, type, cycle_id: activeCycle ? activeCycle.id : null });
-      expenses.push({ id: newId, date, amount, desc, type });
+      await dbInsert({ id: newId, ...row, cycle_id: activeCycle ? activeCycle.id : null });
+      expenses.push({ id: newId, date, amount, desc, type, origCcy, origAmount, fxRate });
     }
     setSyncDot('ok'); render(); closeAdd();
   } catch(e) { console.error(e); setSyncDot('err'); }
