@@ -243,6 +243,30 @@
       border-color: var(--accent); background: rgba(0,122,255,0.08);
       color: var(--accent); font-weight: 600;
     }
+    .amt-row { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
+    .ccy-select { appearance: none; -webkit-appearance: none; text-align: center; cursor: pointer; }
+    .fx-box {
+      display: none; margin-top: 8px; padding: 10px 12px;
+      background: rgba(0,122,255,0.06); border: 1.5px solid rgba(0,122,255,0.18);
+      border-radius: 11px;
+    }
+    .fx-box.on { display: block; }
+    .fx-line { display: flex; align-items: center; gap: 6px; }
+    .fx-lbl { font-size: 13px; color: var(--sub); white-space: nowrap; }
+    .fx-input {
+      flex: 1; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border);
+      border-radius: 8px; font-size: 14px; font-family: inherit;
+      background: var(--card); color: var(--text); outline: none;
+    }
+    .fx-input:focus { border-color: var(--accent); }
+    .fx-refresh {
+      background: none; border: none; cursor: pointer; color: var(--accent);
+      font-size: 16px; padding: 2px 4px; line-height: 1;
+    }
+    .fx-refresh:disabled { opacity: 0.4; cursor: default; }
+    .fx-note { font-size: 11px; color: var(--sub); margin-top: 5px; min-height: 14px; }
+    .fx-note.err { color: var(--red); }
+    .fx-preview { font-size: 15px; font-weight: 600; margin-top: 3px; }
     .submit {
       width: 100%; padding: 14px; background: var(--accent); color: #fff;
       border: none; border-radius: 13px; font-size: 16px; font-weight: 600;
@@ -438,11 +462,26 @@
     <div class="sheet-title" id="add-sheet-title">添加开支</div>
     <div class="fgrp">
       <label class="flabel">日期</label>
-      <input type="date" class="finput" id="f-date">
+      <input type="date" class="finput" id="f-date" onchange="onDateChange()">
     </div>
     <div class="fgrp">
-      <label class="flabel">金额 (AUD)</label>
-      <input type="number" class="finput" id="f-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal">
+      <label class="flabel">金额</label>
+      <div class="amt-row">
+        <input type="number" class="finput" id="f-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal" oninput="onAmountInput()">
+        <select class="finput ccy-select" id="f-ccy" onchange="onCcyChange()"></select>
+      </div>
+      <!-- 选了非 AUD 才展开。汇率格永远可以手改：现金换汇的实际汇率跟欧央行
+           中间价差不少，而且这也是不支持币种（越南盾、新台币）的唯一入口。 -->
+      <div class="fx-box" id="fx-box">
+        <div class="fx-line">
+          <span class="fx-lbl">1 <span id="fx-ccy">—</span> =</span>
+          <input type="number" class="fx-input" id="f-rate" step="any" min="0" inputmode="decimal" oninput="onRateInput()">
+          <span class="fx-lbl">AUD</span>
+          <button type="button" class="fx-refresh" id="fx-refresh" onclick="refreshRate()" title="重新获取汇率">↻</button>
+        </div>
+        <div class="fx-note" id="fx-note"></div>
+        <div class="fx-preview" id="fx-preview">≈ A$—</div>
+      </div>
     </div>
     <div class="fgrp">
       <label class="flabel">描述</label>
