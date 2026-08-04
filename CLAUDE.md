@@ -32,16 +32,21 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 - 回复用中文。
 - 小改动（CSS 调色、文案微调、单元素调整）直接改直接推，不用每次问。
 - 推 `main` 即上线，1–2 分钟生效。没有 CI，没有测试框架。
-- 唯一的自动化验证是 `node scripts/verify-recipe-logic.js`（跑 `assets/recipe.js` 里 PURE LOGIC 段的断言），必须从仓库根目录跑。
+- 没有测试框架，自动化验证全靠 `scripts/` 下那几个脚本（见下），**必须从仓库根目录跑**。
 - 建表、建 bucket、部署 Edge Function、改 RLS 策略都得用户在 Supabase 控制台自己操作，会话里没权限。SQL 和代码可以给现成的。
 - **仓库是公开的**，不要提交任何含个人信息的文件（包括真实邮箱地址）。
 
-## 改完跑这三个检查
+## 改完跑这五个检查
 
 ```bash
 node scripts/verify-recipe-logic.js    # recipe.js 的 PURE LOGIC 段断言
+node scripts/verify-fx-logic.js        # index.html 的 PURE LOGIC 段断言（汇率换算那套）
 python3 scripts/verify-refs.py         # 有没有「调用了但没定义」的函数（跨文件断裂）
+python3 scripts/verify-shared-fns.py   # 共用小函数在几个页面之间有没有悄悄分化
 node -e 'new Function(require("fs").readFileSync("assets/auth.js","utf8"));console.log("ok")'
 ```
 
-`verify-refs.py` 会有注释和文案造成的误报，逐个 grep 确认，别无脑信也别无脑忽略。
+- `verify-refs.py` 会有注释和文案造成的误报，逐个 grep 确认，别无脑信也别无脑忽略。**`index.html` 的正常输出是 `['REST']`**，多出别的名字就要查。
+- `verify-shared-fns.py` 只盯它 `WATCH` 里登记的那几个函数。`render` / `itemRowHtml` / `startPolling` 这些在各页面本来就该不一样，**不要**为了让它们"统一"而硬合并。
+
+**加新的纯函数就顺手加断言。** PURE LOGIC 段是这仓库唯一能自动验的部分，不加断言等于多一个盲区。写完的断言**先让它失败一次**再改对——这是唯一能证明断言真在测代码、而不是空转通过的办法。

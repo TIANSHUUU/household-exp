@@ -1,6 +1,6 @@
 # household_exp 项目 Handoff
 
-最后更新：2026-08-04
+最后更新：2026-08-04（第二次）
 
 这份文档给「接手这个仓库的下一个人（或下一段对话）」看。目标是让你不用回读聊天记录就能继续干活。
 
@@ -366,10 +366,13 @@ curl ... -H "Authorization: Bearer $(cat .token)"          # Claude 这样引用
 **纯逻辑段落是这个仓库唯一能自动验证的部分。** `assets/recipe.js` 里 `// ── PURE LOGIC START ──` / `// ── PURE LOGIC END ──` 之间的函数不碰 DOM 也不碰网络，`scripts/verify-recipe-logic.js` 会把这段切出来 eval 跑真断言。
 
 ```bash
-node scripts/verify-recipe-logic.js     # 必须从仓库根目录跑
+node scripts/verify-recipe-logic.js     # assets/recipe.js 的，必须从仓库根目录跑
+node scripts/verify-fx-logic.js         # index.html 的（2026-08-04 加）
 ```
 
-改这段代码时**保持它无副作用**。加新纯函数就顺手加断言——这是唯一的安全网。
+**`index.html` 2026-08-04 起也有 PURE LOGIC 段了**，装的是外币换算那一套纯函数。以前这仓库只有 `assets/recipe.js` 能自动验，账单页动了只能靠手点。
+
+改这段代码时**保持它无副作用**。加新纯函数就顺手加断言——这是唯一的安全网。而且**断言写完先让它失败一次**再改对，否则你不知道它是真在测代码还是空转通过。
 
 **大范围重写函数时，检查有没有把别的函数一起删掉。** 我重写视图层时把 `initApp` 整个删了，页面直接白屏。事后加的交叉检查：
 
@@ -418,7 +421,11 @@ PY
 
 ```bash
 # 纯逻辑验证（改了 PURE LOGIC 段就跑）
-node scripts/verify-recipe-logic.js
+node scripts/verify-recipe-logic.js      # assets/recipe.js 的
+node scripts/verify-fx-logic.js          # index.html 的（2026-08-04 加）
+
+# 共用小函数有没有在页面之间悄悄分化（2026-08-04 加，理由见第十一节）
+python3 scripts/verify-shared-fns.py
 
 # 解析检查
 node -e 'new Function(require("fs").readFileSync("assets/recipe.js","utf8"));console.log("ok")'
@@ -622,3 +629,54 @@ node scripts/verify-fx-logic.js     # 必须从仓库根目录跑
 ```
 
 `scripts/verify-refs.py` 这次也扩了：以前对 HTML 只扫 `<script>` 里的内容，标签上的 `onclick="openAdd()"` 完全看不见。现在两边都扫，并且用 `PAGE_DEPS` 登记了「哪个页面 `<script src>` 进了哪个文件」，否则 `recipe.html` 会永久报 5 个假阳性。
+
+
+---
+
+## 十一、四个页面之间的代码重复（2026-08-04）
+
+### 现状：有意为之，不是欠账
+
+四个页面各自把 CSS 和 JS 内联在自己的 HTML 里。这带来了可测量的重复：
+
+- **18 个同名函数**在多个页面里各写了一遍
+- **41 个 CSS class 选择器**在多个页面里各定义了一遍
+
+**这是有意的取舍，不要一看到就想抽模块。** 换来的是：没有构建步骤、推 `main` 即上线、双击 HTML 就能打开、十年后依然跑得动。
+
+### 2026-08-04 发现的真问题
+
+`escHtml`（把用户输入拼进 HTML 前的转义）在 `index.html` 里还是旧版本：
+
+```js
+// index.html 的旧版：不转义单引号，也没有 String() 兜底
+function escHtml(s) { return s.replace(/&/g,'&amp;')... }
+
+// shopping.html / activity.html 的改进版
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({...}[c])); }
+```
+
+**改进只传播到了 3 个页面里的 2 个**，而且没有任何机制会告诉你漏了。
+
+（当时**不构成漏洞**——`index.html` 里两处用法都在标签之间的文本位置，不在属性里，少转义单引号不影响。但这正是重复代码的典型形态：修复只走到一半，静悄悄的。）
+
+已统一。`setSyncDot` 顺手也统一了写法（三个页面行为本来就相同，只是 `index.html` 拆成了三行，留着会让检测脚本永远报它）。
+
+### 选的方案：检测，而不是抽取
+
+加了 `scripts/verify-shared-fns.py`。它盯 `WATCH` 里登记的 7 个函数，多个页面都定义了就必须字节相同（忽略空白）。
+
+**为什么不抽成 `assets/common.js`：**
+
+1. **规模不够。** 真正"应该完全一样"的只有 7 个小函数，且都不长。
+2. **一半的重复是合理的。** `render` / `itemRowHtml` / `startPolling` / `showLoading` 在各页面本来就该不同——账单的行和活动的行不是一回事，三个页面的 DOM 结构也不同。硬统一会造出塞满 `if (页面 === 'xxx')` 的怪物，比重复更难维护。
+3. **风险不对称。** 那是横跨 3 个页面的重构，而 `shopping.html` / `activity.html` **没有任何自动化测试**，改坏了只能靠手点发现。
+4. **抽取会继承 `?v=` 维护负担**（见第五节）。为几个小函数背这个负担不划算。
+
+**什么时候该重新考虑抽取**：下次要大改这几个页面的时候顺手做——那时本来就要动这些代码，边际成本接近零。或者当 `WATCH` 长到十几二十个的时候。
+
+**为什么不上 `import` / `export`**：四个页面有 **74 处内联事件处理器**（`onclick=` 54 处、`onkeydown` 8 处、`onchange`/`oninput`/`onblur`/拖拽等 12 处）。`<script type="module">` 里的函数是模块作用域的、不挂全局，`onclick="openAdd()"` 会直接报未定义。要转就得把 74 处全改成 `addEventListener`——纯风险没收益。而且 `import` 需要 HTTP 服务，双击打开 HTML 就用不了了。
+
+### 加新的共用函数时
+
+如果它确实该在各页面保持一致，往 `verify-shared-fns.py` 的 `WATCH` 里加一个名字和**理由**。`WATCH` 是主动登记的清单，不是「除了这些都要管」——不登记的重复函数它一概不看。

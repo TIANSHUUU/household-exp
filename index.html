@@ -935,10 +935,8 @@ function onRateInput()   { setFxNote(''); updateFxPreview(); }
 function refreshRate()   { loadRate(true); }
 
 // ── Sync dot ──
-function setSyncDot(s) {
-  const d = document.getElementById('sync-dot');
-  d.className = 'sync-dot ' + s;
-}
+// 和另外两个页面写法保持一致（行为本来就相同，只是这里原先拆成了三行）。
+function setSyncDot(s) { document.getElementById('sync-dot').className = 'sync-dot ' + s; }
 
 // ── Init ──
 async function initApp() {
@@ -1355,9 +1353,10 @@ function overlayClick(e, id) {
 function overlayClick2(e, id) {
   if (e.target.classList.contains('drawer-overlay')) document.getElementById(id).classList.remove('open');
 }
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// 和 shopping.html / activity.html 里的必须一字不差，由 scripts/verify-shared-fns.py 盯着。
+// 这里原来是个旧版本：不转义单引号，也没有 String() 兜底——改进当初只传播到了另外
+// 两个页面。2026-08-04 补齐。
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
 
 // ── Boot ──
 // 本地存着令牌就续一次，续得上才直接进 app；续不上就老实显示登录页。
