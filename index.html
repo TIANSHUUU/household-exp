@@ -1063,6 +1063,9 @@ function itemRowHtml(e, readonly) {
   const t = TYPE_META[e.type];
   const amtTxt   = e.type === 'partner_paid' ? `−$${fmt(e.amount)}` : `$${fmt(e.amount)}`;
   const shareTxt = e.type === 'shared' ? `各付 $${fmt(e.amount/2)}` : e.type === 'partner_personal' ? '全额抵扣' : '全额增加';
+  // 只有外币记录才多这一段。AUD 记的行显示和以前一模一样。
+  const origTxt  = e.origCcy ? fmtOrig(e.origAmount, e.origCcy) : '';
+  const subTxt   = origTxt ? `${origTxt} · ${shareTxt}` : shareTxt;
   const actions  = readonly ? '' : `<div class="item-actions">
           <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
           <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
@@ -1075,7 +1078,7 @@ function itemRowHtml(e, readonly) {
         </div>
         <div class="item-right">
           <div class="item-amount">${amtTxt}</div>
-          <div class="item-share">${shareTxt}</div>
+          <div class="item-share">${subTxt}</div>
         </div>${actions}
       </div>`;
 }
