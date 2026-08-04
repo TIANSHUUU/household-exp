@@ -1,6 +1,6 @@
 # household_exp 项目 Handoff
 
-最后更新：2026-08-03
+最后更新：2026-08-04
 
 这份文档给「接手这个仓库的下一个人（或下一段对话）」看。目标是让你不用回读聊天记录就能继续干活。
 
@@ -71,16 +71,25 @@ tag_i18n
 ai_usage
   day(date pk), count        ← 只有 Edge Function 用 service role 访问，无 RLS policy
 
+expenses
+  id, date, amount, description, type, cycle_id,
+  orig_currency, orig_amount, fx_rate    ← 2026-08-04 加的外币三列，老数据全 NULL
+
+cycles
+  id, label, start_date, status, carryover, transfer
+
 storage bucket: recipe-images（public read，路径 recipes/<folder>/<随机名>）
 ```
 
-### 三条不能破的约定
+### 四条不能破的约定
 
 1. **`ingredient_keys` 永远是中文 canonical。** 它是匹配和搜索的机器键。双语化会让集合运算要跨语言对齐，凭空多一类 bug。英文搜索靠 `ingredient_vocab.aliases` 里的英文别名命中（`buttermilk → 酪乳` 实测可用）。
 
 2. **`tags` 永远存中文 canonical**，英文显示走 `tag_i18n` 查表。标签在食谱间高度重复，存双份会冗余且筛选栏要按语言去重。
 
 3. **`staple = true` 的食材在冰箱匹配时默认「你有」。** 盐、油、酱油、泡打粉、苏打粉等 20 条。**不标 staple，每道菜都会提示「再买 5 样」，超过 3 样上限后直接不显示——功能等于废掉。** 新增常备调料记得标。
+
+4. **`expenses.amount` 永远是 AUD。** 2026-08-04 加了外币支持，但换算在写入时就做完了——`orig_currency` / `orig_amount` / `fx_rate` 只是留痕，三列全 NULL 表示这笔本来就是 AUD 记的。**任何汇总都不许从 `orig_amount` 现算**，否则汇率一变历史账目就会漂。详见第十节。
 
 ---
 
@@ -452,6 +461,7 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 3. ~~加 `normalize` action~~ —— **降级不做**。2026-08-03 改成补了一份 145 条的食材词表（`supabase/seed-ingredient-vocab.sql`），零配额零风险地覆盖了绝大多数情况；md 录入那条路本来也会顺手补别名。理由见 `docs/superpowers/specs/2026-08-03-ingredient-vocab-seed-design.md`。
 4. ~~购物清单联动~~ ✅ 2026-08-03 完成
 5. ~~`suggest` action~~ ✅ 2026-08-03 完成
+6. ~~外币开支按记账日汇率折算~~ ✅ 2026-08-04 完成，见第十节
 
 **清单已清空，目前没有待办。** 下一步做什么由用户决定。
 
@@ -554,3 +564,59 @@ done
 **每一行都必须是 `*/0`。** 任何一张表出现非零条数，就是那张表漏了策略——回去核对上面 SQL 的表名列表。
 
 2026-08-03 实测：8 张表全部 `*/0`（改之前 `expenses` 是 107），写入全部 401，登录后读回来仍是完整的 107 条。
+
+---
+
+## 十、外币开支（2026-08-04 起）
+
+### 一句话
+
+家庭账单页记一笔外币开支时选货币和金额，页面按**那一天**的汇率折算成 AUD 存进 `amount`，同时把原币金额和用掉的汇率一并留痕。
+
+设计和实施计划：
+- `docs/superpowers/specs/2026-08-04-multi-currency-expense-design.md`
+- `docs/superpowers/plans/2026-08-04-multi-currency-expense.md`
+
+### 支点：`amount` 的语义一个字都没改
+
+这是整个改动能做得这么小的原因。分账、hero 结算、`newCycle()` 结转、往期记录合计——全部代码一行没动，因为它们读的还是同一个 `amount`。
+
+- 三列全 NULL = 这笔本来就是 AUD 记的。107 条老数据**没有迁移**。
+- 不变式：`amount = round(orig_amount × fx_rate, 2)`。
+- **冲突时以 `amount` 为准**，`orig_*` 是留痕，不是真相来源。
+
+`fx_rate` 的方向定死为「**1 单位原币值多少 AUD**」（日元是 0.00889 这种小数）。反向存看着好读，但换算要做除法，四舍五入的坑更多。
+
+### 汇率从哪来
+
+`https://api.frankfurter.dev/v1/<日期>?base=<币种>&symbols=AUD`
+
+- 欧央行口径，**30 种货币**，免费、不要 key、支持按日期查历史。
+- **浏览器直连**——实测返回 `access-control-allow-origin: *`，不用 Edge Function 代理，也就不吃 Gemini 那 20 次/天的配额。
+- ⚠️ **这是整个仓库唯一一处不带 `H()` 的 fetch。** 它是第三方，带上等于把登录令牌送给 frankfurter.dev。
+- 旧域名 `api.frankfurter.app` 现在 301 跳转，别用。
+- 缺越南盾、新台币、迪拉姆——走手填汇率那条路。
+
+**周末和节假日会回退到上一个工作日**，响应里的 `date` 是真实日期。回退了界面会标一句「取的是 X 的收盘价（当天休市）」，不闷声换掉。
+
+缓存在 localStorage `hh_fx`（`{"2026-08-04|JPY":0.00889}`）。历史汇率不可变，只增不删，不用做淘汰。上次用的货币存在 `hh_last_ccy`。
+
+### 三个容易踩的地方
+
+**1. `toLocal` / `toDB` / `expenseSig` 必须一起改。** 漏一处就是一类静默 bug：漏 `toLocal` 原币读不回来；漏 `toDB` 轮询签名两边永远不等、每 15 秒无脑重渲染；漏 `expenseSig` 则只改原币的编辑同步不过去。
+
+`expenseSig` 里 `fx_rate` 也必须在——手改汇率 `0.00889 → 0.008891`，3200 日元两次都算出 A$28.45，不带 `fx_rate` 的话签名不变，另一台设备永远刷不到这次修改。
+
+**2. `submitExpense` 写内存对象时必须带上 `origCcy` / `origAmount` / `fxRate`。** 它们是手写的对象字面量，不走 `toDB`。少了的话除了当场显示不出原币，更糟的是：`confirmDel` 走 `toDB(e)`、`undoDel` 再插回去，删一下再撤销就会把 NULL 盖到好数据上。
+
+**3. `currencyDisplay` 用 `'code'` 不能用 `'narrowSymbol'`。** 后者把 USD 和 SGD 都渲染成 `$`，跟同一行旁边的澳币撞车；`¥` 在日元和人民币之间也有歧义。另外 ICU 在代码和数字之间插的是 **U+00A0 不换行空格**不是普通空格，`fmtOrig` 里归一成普通空格，否则断言在不同 ICU 版本之间会飘。
+
+### 验证
+
+`index.html` 现在也有 PURE LOGIC 段了（以前只有 `assets/recipe.js` 有）：
+
+```bash
+node scripts/verify-fx-logic.js     # 必须从仓库根目录跑
+```
+
+`scripts/verify-refs.py` 这次也扩了：以前对 HTML 只扫 `<script>` 里的内容，标签上的 `onclick="openAdd()"` 完全看不见。现在两边都扫，并且用 `PAGE_DEPS` 登记了「哪个页面 `<script src>` 进了哪个文件」，否则 `recipe.html` 会永久报 5 个假阳性。
