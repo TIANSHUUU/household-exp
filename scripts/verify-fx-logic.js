@@ -15,7 +15,7 @@ const assert = require('assert');
 const list = currencyList();
 assert.strictEqual(list.length, 30, 'Frankfurter 支持 30 种货币（含 AUD）');
 assert.strictEqual(list[0].code, 'AUD', 'AUD 必须置顶——日常记账不该多点一下');
-assert.strictEqual(new Set(list.map(c => c.code)).size, 30, '货币代码不能重复');
+assert.strictEqual(new Set(list.map(c => c.code)).size, list.length, '货币代码不能重复');
 assert.ok(list.every(c => /^[A-Z]{3}$/.test(c.code)), '代码必须是三个大写字母');
 assert.ok(list.every(c => c.name && c.name.length <= 4),
   '中文名不超过 4 字，否则下拉框在手机上会被截断');
@@ -48,8 +48,7 @@ assert.strictEqual(fxCacheKey('2026-08-04', 'jpy'), '2026-08-04|JPY', '大小写
 console.log('✅ cache key OK');
 
 // ── 原币格式化 ──
-// currencyDisplay 用 code 不用 narrowSymbol：narrowSymbol 会把 USD 和 SGD
-// 都渲染成 $，跟同一行旁边的澳币撞车，而 ¥ 在 JPY 和 CNY 之间也有歧义。
+// 为什么是 currencyDisplay:'code' 见 index.html 里 fmtOrig 定义处的注释。
 assert.strictEqual(fmtOrig(3200, 'JPY'),   'JPY 3,200',  '日元没有小数位');
 assert.strictEqual(fmtOrig(12000, 'KRW'),  'KRW 12,000', '韩元没有小数位');
 assert.strictEqual(fmtOrig(450.5, 'THB'),  'THB 450.50', '泰铢两位小数');
@@ -61,8 +60,8 @@ assert.strictEqual(fmtOrig(null, 'JPY'),   '',           '没有金额就不显�
 // ICU 插的是 U+00A0，fmtOrig 归一成普通空格。这条守着那个归一——去掉 replace
 // 就会挂，而肉眼看输出是看不出区别的。
 assert.ok(!fmtOrig(3200, 'JPY').includes('\u00A0'), '输出里不能残留不换行空格');
-// 三个字母但查无此币：Intl 不抛错，正常渲染。不崩就达到目的了。
-assert.strictEqual(fmtOrig(100, 'ZZZ'),    'ZZZ 100.00', '查无此币的合法格式代码照常渲染');
+// 三个字母但查无此币：Intl 不抛错，不崩就达到目的了——两位小数是 ICU 默认行为，不是我们的约定。
+assert.ok(fmtOrig(100, 'ZZZ').includes('ZZZ'), '查无此币的合法格式代码照常渲染，不崩就行');
 // 格式非法（不是三个字母）才会抛 RangeError，走 catch 兜底。这条才是真在测 catch 分支。
 assert.strictEqual(fmtOrig(100, 'ZZ'),     'ZZ 100',     '格式非法的代码走兜底，不能让整行渲染抛错');
 
@@ -115,22 +114,24 @@ console.log('✅ input validation OK');
 // 只改原币、AUD 恰好没变的编辑，另一台设备也要能刷出来
 const base = { id:1, amount:28.45, description:'ramen', type:'shared', date:'2026-08-04',
                orig_currency:'JPY', orig_amount:3200, fx_rate:0.00889 };
-assert.strictEqual(expenseSig(base), expenseSig(Object.assign({}, base)), '同一条记录签名必须稳定');
 assert.notStrictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { orig_amount:3300 })),
   '原币金额变了签名必须变');
 assert.notStrictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { orig_currency:'THB' })),
   '原币币种变了签名必须变');
+assert.notStrictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { fx_rate:0.008891 })),
+  '手改汇率后即使 AUD 舍入结果不变，签名也必须变——否则另一台设备永远刷不到这次修改');
 
-// PostgREST 可能把 numeric 回成字符串，两边必须归一，否则每 15 秒无脑重渲染
+// 数字归一的理由见 index.html 里 expenseSig 定义处的注释
 assert.strictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { amount:'28.45' })),
   '字符串和数字形态的同一个金额必须同签名');
 assert.strictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { orig_amount:'3200' })),
   '字符串和数字形态的同一个原币金额必须同签名');
+assert.strictEqual(expenseSig(base), expenseSig(Object.assign({}, base, { fx_rate:'0.00889' })),
+  '字符串和数字形态的同一个汇率必须同签名');
 
 // 老数据：三列全 NULL
 const old = { id:2, amount:40.78, description:'wine', type:'shared', date:'2026-05-22',
               orig_currency:null, orig_amount:null, fx_rate:null };
-assert.strictEqual(expenseSig(old), expenseSig(Object.assign({}, old)), '老数据签名也要稳定');
 assert.strictEqual(
   expenseSig(old),
   expenseSig({ id:2, amount:40.78, description:'wine', type:'shared', date:'2026-05-22' }),

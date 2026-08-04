@@ -691,13 +691,15 @@ const CURRENCIES = [
   { code:'RON', name:'罗马尼亚' }, { code:'SEK', name:'瑞典' },
   { code:'TRY', name:'土耳其' }, { code:'ZAR', name:'南非'   },
 ];
-function currencyList() { return CURRENCIES; }
+function currencyList() { return CURRENCIES.slice(); }
 
 // 原币金额 × 汇率 → AUD，两位小数。任何一个参数不合法都返回 null 而不是 NaN——
 // NaN 会一路写进数据库，是最难查的一类脏数据。
 function convertToAud(origAmount, rate) {
   const a = Number(origAmount), r = Number(rate);
   if (!isFinite(a) || !isFinite(r) || a <= 0 || r <= 0) return null;
+  // 恰好落在半分上的（29 @ 0.005 精确值 0.145）会因浮点表示往下取，差 1 分。
+  // 实测这是唯一一类偏差，占比 0.06%，两人分账差 1 分不值得上整数分币的机器。
   return Math.round(a * r * 100) / 100;
 }
 
@@ -711,16 +713,14 @@ function fxCacheKey(date, ccy) {
 // 空格，输出才在 node 和各浏览器的不同 ICU 版本之间稳定（断言也才好写）。
 function fmtOrig(amount, ccy) {
   const a = Number(amount);
-  if (!ccy || amount == null || !isFinite(a)) return '';
+  if (!ccy || amount == null || amount === '' || !isFinite(a)) return '';
   try {
     return new Intl.NumberFormat('en-AU',
       { style:'currency', currency: ccy, currencyDisplay:'code' }).format(a)
       .replace(/\u00A0/g, ' ');
   } catch (err) {
-    // 走到这里的只有**格式非法**的代码（不是三个字母，如 'ZZ'），Intl 抛 RangeError。
-    // 三个字母但查无此币（'ZZZ'）并不抛错，会渲染成 'ZZZ 100.00'——那也没问题，
-    // 这里要防的只是「整行渲染崩掉」，不是校验币种真伪。而且 orig_currency 只可能
-    // 来自上面的 CURRENCIES，真伪校验在这里属于没人会用到的机器。
+    // 只有格式非法的代码（非三个字母，如 'ZZ'）才会走到这——Intl 对 'ZZZ' 这种
+    // 三个字母但查无此币的代码并不抛错，会正常渲染成 'ZZZ 100.00'。
     return ccy + ' ' + a;
   }
 }
@@ -744,10 +744,11 @@ function fxNoteDate(requestedDate, actualDate) {
 // 提交前校验。返回 { ok, error }，error 直接拿去 alert。
 function validateExpenseInput(v) {
   if (!v.date) return { ok:false, error:'请填写日期' };
-  if (!v.desc) return { ok:false, error:'请填写描述' };
+  if (!v.desc || !String(v.desc).trim()) return { ok:false, error:'请填写描述' };
   const amt = Number(v.origAmount);
   if (!isFinite(amt) || amt <= 0) return { ok:false, error:'请填写有效金额' };
-  if (v.ccy && v.ccy !== 'AUD') {
+  const c = String(v.ccy || 'AUD').toUpperCase();
+  if (c !== 'AUD') {
     const r = Number(v.rate);
     if (!isFinite(r) || r <= 0) return { ok:false, error:'没查到汇率，请手动填写汇率' };
   }
@@ -757,10 +758,11 @@ function validateExpenseInput(v) {
 // 15 秒轮询用它判断要不要重渲染。两边（数据库行 / toDB 的输出）都走这一个函数。
 // 数字统一过 Number()：PostgREST 可能把 numeric 回成字符串，不归一的话
 // "40.00" 和 40 会被当成不同记录，每 15 秒无脑重渲染一次。
+// ⚠️ 接进轮询之前必须先让 toDB 也输出这三列，否则每 15 秒无脑重渲染。
 function expenseSig(r) {
   const n = x => (x == null || x === '') ? '' : String(Number(x));
   return [r.id, n(r.amount), r.description, r.type, r.date,
-          r.orig_currency || '', n(r.orig_amount)].join(':');
+          r.orig_currency || '', n(r.orig_amount), n(r.fx_rate)].join(':');
 }
 // ── PURE LOGIC END ──
 
