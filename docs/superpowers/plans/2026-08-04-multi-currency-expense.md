@@ -768,7 +768,7 @@ async function loadRate(force) {
     fxCacheSet(date, ccy, res.rate);
     document.getElementById('f-rate').value = res.rate;
     const noteDate = fxNoteDate(date, res.date);
-    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天休市）` : '');
+    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天还没有牌价）` : '');
   } catch (err) {
     if (seq !== fxSeq) return;
     console.error(err);
@@ -803,7 +803,7 @@ python3 -m http.server 8765
 | 下拉选回 AUD | 汇率行整个收起 |
 | 再选 JPY | 立刻填上汇率，**Network 面板没有新请求**（命中缓存） |
 | 点 ↻ | 发新请求，汇率行短暂显示「正在获取汇率…」 |
-| 日期改成 2026-08-01（周六） | 提示「取的是 2026-07-31 的收盘价（当天休市）」 |
+| 日期改成 2026-08-01（周六） | 提示「取的是 2026-07-31 的收盘价（当天还没有牌价）」 |
 | 手改汇率格成 0.01，金额 3200 | 显示 `≈ A$32.00`，提示文字清空 |
 
 再测拉不到的情况——Console 里临时把 API 打歪：

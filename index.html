@@ -914,7 +914,9 @@ async function loadRate(force) {
     fxCacheSet(date, ccy, res.rate);
     document.getElementById('f-rate').value = res.rate;
     const noteDate = fxNoteDate(date, res.date);
-    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天休市）` : '');
+    // 不能写「当天休市」。欧央行每天欧洲时间下午才发当日牌价，澳洲白天记当天的账时
+    // 那边还是前一晚——最常见的场景根本没休市，只是牌价还没出。这句话要同时说得通。
+    setFxNote(noteDate ? `取的是 ${noteDate} 的收盘价（当天还没有牌价）` : '');
   } catch (err) {
     if (seq !== fxSeq) return;
     console.error(err);
