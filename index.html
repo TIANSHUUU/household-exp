@@ -1141,22 +1141,38 @@ function openEdit(id) {
 function closeAdd() { editingId = null; document.getElementById('add-overlay').classList.remove('open'); }
 
 async function submitExpense() {
-  const date   = document.getElementById('f-date').value;
-  const amount = parseFloat(document.getElementById('f-amount').value);
-  const desc   = document.getElementById('f-desc').value.trim();
-  const type   = document.querySelector('input[name="ftype"]:checked').value;
-  if (!date || !amount || amount <= 0 || !desc) { alert('请填写所有字段'); return; }
+  const date  = document.getElementById('f-date').value;
+  const desc  = document.getElementById('f-desc').value.trim();
+  const type  = document.querySelector('input[name="ftype"]:checked').value;
+  const ccy   = curCcy();
+  const inAmt = parseFloat(document.getElementById('f-amount').value);
+  const rate  = ccy === 'AUD' ? 1 : curRate();
+
+  const v = validateExpenseInput({ date, desc, origAmount: inAmt, ccy, rate });
+  if (!v.ok) { alert(v.error); return; }
+
+  // amount 永远是 AUD。origCcy 为 null 表示这笔本来就是 AUD 记的。
+  const amount     = ccy === 'AUD' ? inAmt : convertToAud(inAmt, rate);
+  const origCcy    = ccy === 'AUD' ? null  : ccy;
+  const origAmount = ccy === 'AUD' ? null  : inAmt;
+  const fxRate     = ccy === 'AUD' ? null  : rate;
+  // 校验已经拦过一层，这里是最后一道闸——NaN 写进数据库比报错难查得多
+  if (amount == null || amount <= 0) { alert('金额换算失败，请检查金额和汇率'); return; }
+
+  const row = { date, amount, description: desc, type,
+                orig_currency: origCcy, orig_amount: origAmount, fx_rate: fxRate };
+
   const btn = document.getElementById('add-submit-btn');
   btn.disabled = true; setSyncDot('busy');
   try {
     if (editingId !== null) {
-      await dbUpdate(editingId, { date, amount, description: desc, type });
+      await dbUpdate(editingId, row);
       const idx = expenses.findIndex(x => x.id === editingId);
-      if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type };
+      if (idx !== -1) expenses[idx] = { id: editingId, date, amount, desc, type, origCcy, origAmount, fxRate };
     } else {
       const newId = Date.now();
-      await dbInsert({ id: newId, date, amount, description: desc, type, cycle_id: activeCycle ? activeCycle.id : null });
-      expenses.push({ id: newId, date, amount, desc, type });
+      await dbInsert({ id: newId, ...row, cycle_id: activeCycle ? activeCycle.id : null });
+      expenses.push({ id: newId, date, amount, desc, type, origCcy, origAmount, fxRate });
     }
     setSyncDot('ok'); render(); closeAdd();
   } catch(e) { console.error(e); setSyncDot('err'); }
