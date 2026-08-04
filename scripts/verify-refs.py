@@ -16,7 +16,12 @@ import re
 import sys
 
 FILES = ['index.html', 'shopping.html', 'activity.html', 'recipe.html', 'assets/recipe.js']
-SHARED = 'assets/auth.js'
+SHARED = 'assets/auth.js'          # 四个页面都引，所有页面共享它的定义
+
+# 页面自己 <script src> 进来的文件。开始扫内联 on*= 属性之后，recipe.html 里
+# onclick="toggleLang()" 这类调用才第一次被看见——而它们定义在 assets/recipe.js，
+# 不登记的话每次都报 5 个假阳性，报着报着就没人看这个脚本的输出了。
+PAGE_DEPS = {'recipe.html': ['assets/recipe.js']}
 
 # 注意：这里刻意**不**剥离注释。JS 里的正则字面量（比如 /\*/）会伪造出
 # 块注释的开头，naive 的剥离器会顺手吃掉后面几百行真代码，然后报出一堆
@@ -52,7 +57,10 @@ suspects = 0
 for path in FILES:
     src = source(path)
     called = set(re.findall(r'(?<![.\w$])([a-zA-Z_]\w*)\s*\(', src))
-    unknown = sorted(called - defined_in(src) - shared - KEYWORDS)
+    deps = set()
+    for dep in PAGE_DEPS.get(path, []):
+        deps |= defined_in(source(dep))
+    unknown = sorted(called - defined_in(src) - shared - deps - KEYWORDS)
     suspects += len(unknown)
     print(f'{path:20} {unknown or "✅"}')
 
