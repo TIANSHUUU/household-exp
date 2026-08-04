@@ -57,6 +57,9 @@ assert.strictEqual(fmtOrig(20, 'SGD'),     'SGD 20.00',  '新元不能显示成 
 assert.strictEqual(fmtOrig(88, 'CNY'),     'CNY 88.00',  '人民币不能显示成 ¥，会跟日元撞');
 assert.strictEqual(fmtOrig(100, ''),       '',           '没有币种就不显示');
 assert.strictEqual(fmtOrig(null, 'JPY'),   '',           '没有金额就不显示');
+// 空串必须和 null 一样什么都不显示。少了这条守卫，'' 会被 Number() 变成 0、
+// 渲染成「JPY 0」——而 convertToAud('') 返回的是 null，两边对空的理解就分家了。
+assert.strictEqual(fmtOrig('', 'JPY'),     '',           '空串金额和 null 一样不显示');
 // ICU 插的是 U+00A0，fmtOrig 归一成普通空格。这条守着那个归一——去掉 replace
 // 就会挂，而肉眼看输出是看不出区别的。
 assert.ok(!fmtOrig(3200, 'JPY').includes('\u00A0'), '输出里不能残留不换行空格');
