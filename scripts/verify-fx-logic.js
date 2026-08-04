@@ -60,7 +60,7 @@ assert.strictEqual(fmtOrig(100, ''),       '',           '没有币种就不显�
 assert.strictEqual(fmtOrig(null, 'JPY'),   '',           '没有金额就不显示');
 // ICU 插的是 U+00A0，fmtOrig 归一成普通空格。这条守着那个归一——去掉 replace
 // 就会挂，而肉眼看输出是看不出区别的。
-assert.ok(!fmtOrig(3200, 'JPY').includes(' '), '输出里不能残留不换行空格');
+assert.ok(!fmtOrig(3200, 'JPY').includes('\u00A0'), '输出里不能残留不换行空格');
 // 三个字母但查无此币：Intl 不抛错，正常渲染。不崩就达到目的了。
 assert.strictEqual(fmtOrig(100, 'ZZZ'),    'ZZZ 100.00', '查无此币的合法格式代码照常渲染');
 // 格式非法（不是三个字母）才会抛 RangeError，走 catch 兜底。这条才是真在测 catch 分支。
