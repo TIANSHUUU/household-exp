@@ -1105,9 +1105,16 @@ function openAdd() {
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value   = '';
   document.getElementById('ft-shared').checked = true;
+  // 记住上次用的货币：旅行中连记 20 笔不用每次切。代价是回国后第一笔 AUD
+  // 容易忘了切回去——防线是汇率行的底色和实时的「≈ A$」数字。
+  // 用户明确接受这个取舍，别自作主张改成「隔天自动重置」之类的聪明逻辑。
+  document.getElementById('f-ccy').value  = lastCcy();
+  document.getElementById('f-rate').value = '';
+  setFxNote('');
   document.getElementById('add-sheet-title').textContent = '添加开支';
   document.getElementById('add-submit-btn').textContent  = '添加';
   document.getElementById('add-overlay').classList.add('open');
+  loadRate(false);
   setTimeout(() => document.getElementById('f-amount').focus(), 350);
 }
 function openEdit(id) {
@@ -1115,9 +1122,17 @@ function openEdit(id) {
   if (!e) return;
   editingId = id;
   document.getElementById('f-date').value   = e.date;
-  document.getElementById('f-amount').value = e.amount;
+  document.getElementById('f-ccy').value    = e.origCcy || 'AUD';
+  // 外币记录回填的是原币金额，不是换算后的 AUD
+  document.getElementById('f-amount').value = e.origCcy ? e.origAmount : e.amount;
+  document.getElementById('f-rate').value   = e.origCcy ? e.fxRate : '';
   document.getElementById('f-desc').value   = e.desc;
   document.querySelector(`input[name="ftype"][value="${e.type}"]`).checked = true;
+  setFxNote('');
+  // 只开合面板，**不重新拉汇率**——那笔账当时用的就是存下来的这个，
+  // 重拉会无声改掉已经记好的账。改了日期或货币才会触发重拉。
+  syncFxBox();
+  updateFxPreview();
   document.getElementById('add-sheet-title').textContent = '编辑开支';
   document.getElementById('add-submit-btn').textContent  = '保存修改';
   document.getElementById('add-overlay').classList.add('open');
