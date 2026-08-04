@@ -134,8 +134,8 @@ localStorage['hh_fx'] = '{"2026-08-04|JPY":0.00889,"2026-08-03|THB":0.0468}'
 改 `itemRowHtml()` 一处即可——当期列表和往期记录详情共用这个函数（都经过 `groupedListHtml(exps, readonly)`）。
 
 ```
-ramen                     $28.45
-共同分担          ¥3,200 · 各付 $14.23
+ramen                        $28.45
+共同分担          JPY 3,200 · 各付 $14.23
 ```
 
 只有 `orig_currency` 非空的行才多这一段原币。AUD 记的行显示不变。
@@ -146,7 +146,18 @@ ramen                     $28.45
 
 唯一例外是录入表单里那行 `≈ A$28.45`——它就贴在一个 JPY 金额输入框下面，消歧义正是它存在的理由。列表里有 `¥3,200` 在旁边做对照，`$` 不会被误读。
 
-原币的符号/格式：用 `Intl.NumberFormat('en-AU', {style:'currency', currency})`（locale 跟现有 `fmt` 保持一致），日元韩元自动没有小数位，不用自己维护符号表。
+原币的符号/格式：用 `Intl.NumberFormat('en-AU', {style:'currency', currency, currencyDisplay:'code'})`（locale 跟现有 `fmt` 保持一致），日元韩元自动没有小数位，不用自己维护符号表。
+
+**`currencyDisplay` 必须是 `'code'`，不能用 `'narrowSymbol'`。** 2026-08-04 实测：
+
+| 币种 | `narrowSymbol` | `code` |
+|---|---|---|
+| JPY | `¥3,200` | `JPY 3,200` |
+| CNY | `¥88.00` | `CNY 88.00` |
+| USD | `$12.30` | `USD 12.30` |
+| SGD | `$20.00` | `SGD 20.00` |
+
+符号好看，但 **USD / SGD 都渲染成 `$`，跟同一行旁边的澳币 `$28.45` 直接撞车**；`¥` 在日元和人民币之间本来也是歧义的。`code` 三个字母永远不撞、永远不歧义，这是记旅行账的场景里更重要的事。
 
 hero 大数字、三类合计、往期记录的账期合计——**全部只有 AUD**，代码不动。
 
