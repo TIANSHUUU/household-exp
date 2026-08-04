@@ -26,7 +26,11 @@ def source(path):
     s = open(path, encoding='utf-8').read()
     if not path.endswith('.js'):
         # 只取内联 <script>，带 src 的是另一个文件
-        s = '\n'.join(re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, re.S))
+        scripts = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, re.S)
+        # 再加上标签上的内联事件属性：onclick="openAdd()" 这类调用不在 <script>
+        # 里，光扫脚本体是看不见的。少一个 handler 定义就是点了没反应的哑按钮。
+        handlers = re.findall(r'\son\w+\s*=\s*"([^"]*)"', s)
+        s = '\n'.join(scripts + handlers)
     return s
 
 def defined_in(src):
