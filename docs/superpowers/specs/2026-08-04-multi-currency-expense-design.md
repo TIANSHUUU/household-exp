@@ -209,7 +209,13 @@ python3 scripts/verify-refs.py
 node -e 'new Function(require("fs").readFileSync("assets/auth.js","utf8"));console.log("ok")'
 ```
 
-`verify-refs.py` 目前只扫 `recipe.js` + `recipe.html`。新加的 `onchange` / `oninput` 处理函数在 `index.html` 里，**这个脚本盖不到**，需要人工核对新加的内联事件处理器都有对应定义。
+### `verify-refs.py` 要补一个真实缺口
+
+`index.html` 本来就在它的 `FILES` 里（2026-08-04 跑的 baseline 是干净的，只有 `REST` 一个注释误报），所以 JS 内部的调用是覆盖到的。
+
+**盖不到的是 HTML 标签里的内联事件属性**——`source()` 对 `.html` 只抽 `<script>` 的内容，`onclick="openAdd()"` / `onchange="onCcyChange()"` 这类写在标签上的调用完全在扫描范围之外。这次要新加 6 个内联处理器（`onCcyChange` / `onDateChange` / `onAmountInput` / `onRateInput` / `refreshRate`，加上货币下拉），正是这个脚本存在的理由所对应的那类断裂。
+
+所以顺手把 `source()` 扩成也收集 `on\w+="…"` 属性里的内容。改完 baseline 必须仍然只有 `REST` 一项——多出来的任何名字都要 grep 确认。
 
 ## 十、上线风险
 
