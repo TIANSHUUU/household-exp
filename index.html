@@ -1225,7 +1225,10 @@ function showUndoToast(desc) {
   clearTimeout(undoTimer);
   document.getElementById('undo-text').textContent = `已删除「${desc}」`;
   document.getElementById('undo-toast').classList.add('show');
-  undoTimer = setTimeout(hideUndoToast, 5000);
+  // 30 秒不是 5 秒——5 秒真的会错过（2026-08-04 实测就没看到）。
+  // 但别改成常驻：pendingDelRow 冻着删除那一刻的 cycle_id，而 newCycle() 归档时
+  // 不清它，撤销窗口越长，越可能把一笔账插回已经结算完的账期，明细和结算额从此对不上。
+  undoTimer = setTimeout(hideUndoToast, 30000);
 }
 function hideUndoToast() { clearTimeout(undoTimer); document.getElementById('undo-toast').classList.remove('show'); }
 
