@@ -659,8 +659,22 @@ let pendingDelId = null;
 let pendingDelRow = null;
 let undoTimer    = null;
 
-const toLocal = r => ({ id: Number(r.id), date: r.date, amount: parseFloat(r.amount), desc: r.description, type: r.type });
-const toDB    = e => ({ id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type, cycle_id: activeCycle ? activeCycle.id : null });
+// origCcy 为 null 表示这笔本来就是 AUD 记的（老数据三列全 NULL，不需要迁移）。
+// amount 永远是换算后的 AUD——分账、账期结转、往期记录读的都是它，语义不能变。
+const toLocal = r => ({
+  id: Number(r.id), date: r.date, amount: parseFloat(r.amount),
+  desc: r.description, type: r.type,
+  origCcy:    r.orig_currency || null,
+  origAmount: r.orig_amount == null ? null : parseFloat(r.orig_amount),
+  fxRate:     r.fx_rate     == null ? null : parseFloat(r.fx_rate),
+});
+const toDB = e => ({
+  id: e.id, date: e.date, amount: e.amount, description: e.desc, type: e.type,
+  cycle_id: activeCycle ? activeCycle.id : null,
+  orig_currency: e.origCcy    || null,
+  orig_amount:   e.origAmount == null ? null : e.origAmount,
+  fx_rate:       e.fxRate     == null ? null : e.fxRate,
+});
 
 // ── PURE LOGIC START ──
 // 这一段不碰 DOM 也不碰网络。scripts/verify-fx-logic.js 会把它切出来 eval 跑断言，
@@ -822,7 +836,7 @@ function startPolling() {
         || parseFloat(ac.carryover || 0) !== parseFloat(activeCycle.carryover || 0);
       activeCycle = ac;
       const data = await dbGet(ac.id);
-      const sig = d => d.map(r => `${r.id}:${r.amount}:${r.description}:${r.type}:${r.date}`).join('|');
+      const sig = d => d.map(expenseSig).join('|');
       if (cycleChanged || sig(data) !== sig(expenses.map(toDB))) {
         expenses = data.map(toLocal);
         render();
