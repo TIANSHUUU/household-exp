@@ -793,6 +793,29 @@ function rentDatesBetween(afterDate, toDate, rentDay) {
   return out;
 }
 
+// 从开支列表和上期结余算出本期各项。抽成纯函数是为了能在
+// scripts/verify-fx-logic.js 里断言——这是全仓库唯一直接决定钱的公式，
+// 2026-11-02 之前它一条断言都没有。
+//
+// ⚠️ **公式里没有租金项，这是刻意的。** 2026-11-02 起租金是一条真实的
+// partner_paid 开支（每月自动补登，见 ensureRentRows），已经包含在 cp 里。
+// 再加一次 cfg.myRent 就是双重计算。
+//
+// 旧公式是 carryover + cfg.myRent - shared/2 - pp + cp，那个 myRent 按
+// 「每个活跃账期一次」计，不是按月——账期跑了 2.3 个月也只加一笔，
+// 把宝宝欠款多算了 1250 且每月增长。详见 HANDOFF 第十三节。
+function calcTotals(rows, carryover) {
+  let shared = 0, pp = 0, cp = 0;
+  (rows || []).forEach(e => {
+    const amt = parseFloat(e && e.amount) || 0;
+    if      (e.type === 'shared')           shared += amt;
+    else if (e.type === 'partner_personal') pp     += amt;
+    else if (e.type === 'partner_paid')     cp     += amt;
+  });
+  const carry = parseFloat(carryover) || 0;
+  return { shared, pp, cp, carryover: carry, transfer: carry - shared / 2 - pp + cp };
+}
+
 // ── PURE LOGIC END ──
 
 // ── FX rates ──
@@ -980,15 +1003,9 @@ function loadCfg() {
 function saveCfg() { localStorage.setItem(SET_KEY, JSON.stringify(cfg)); }
 
 // ── Calc ──
+// 数学在 PURE LOGIC 段的 calcTotals 里，这里只负责把全局状态喂进去。
 function calc() {
-  let shared = 0, pp = 0, cp = 0;
-  expenses.forEach(e => {
-    if      (e.type === 'shared')           shared += e.amount;
-    else if (e.type === 'partner_personal') pp     += e.amount;
-    else if (e.type === 'partner_paid')     cp     += e.amount;
-  });
-  const carryover = activeCycle ? parseFloat(activeCycle.carryover || 0) : 0;
-  return { shared, pp, cp, carryover, transfer: carryover + cfg.myRent - shared / 2 - pp + cp };
+  return calcTotals(expenses, activeCycle ? activeCycle.carryover : 0);
 }
 
 // ── Format ──

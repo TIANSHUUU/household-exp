@@ -207,4 +207,59 @@ assert.deepStrictEqual(rentDatesBetween('2026-11-02', '2026-08-24', 22), [], 'to
 
 console.log('✅ rent date sequence OK');
 
+// ── 结算公式 ──
+// 这是全仓库唯一直接决定钱的公式，2026-11-02 之前一条断言都没有。
+// 旧公式是 carryover + cfg.myRent - shared/2 - pp + cp，那个 myRent 按
+// 「每个活跃账期一次」计而不是按月——账期跑了 2.3 个月也只加一笔 1250，
+// 把宝宝欠款多算了 1250 且每月增长。详见 spec。
+const _rows = [
+  { type: 'shared',           amount: 100 },   // 各付 50
+  { type: 'partner_personal', amount: 30  },   // 我替宝宝垫，全额抵扣
+  { type: 'partner_paid',     amount: 20  },   // 宝宝替我垫，全额增加
+];
+const t1 = calcTotals(_rows, 0);
+assert.strictEqual(t1.shared, 100, 'shared 汇总');
+assert.strictEqual(t1.pp, 30, 'pp 汇总');
+assert.strictEqual(t1.cp, 20, 'cp 汇总');
+assert.strictEqual(t1.transfer, 0 - 50 - 30 + 20, 'transfer = carry - shared/2 - pp + cp');
+assert.strictEqual(t1.transfer, -60, '展开算一遍防止上面那行写成恒等式');
+
+// **公式里不能再有租金项。** 这条断言的存在就是为了钉死这件事：
+// 如果有人把 myRent 加回来，房租既在 cp 里又在公式里，就是双重计算。
+assert.strictEqual(calcTotals([], 0).transfer, 0,
+  '空账 + 零结余 = 0。如果公式里还藏着租金项，这里会是 1250');
+
+assert.strictEqual(calcTotals([], -6984.63).transfer, -6984.63, '没有开支时结余原样带过');
+
+// 字符串金额（PostgREST 的 numeric 列回来可能是字符串）
+assert.strictEqual(
+  calcTotals([{ type: 'shared', amount: '100' }], '0').transfer, -50,
+  '字符串金额和结余必须和数字一样算');
+
+// 脏数据不能污染结果
+assert.strictEqual(calcTotals([{ type: 'shared', amount: null }], 0).transfer, 0, 'null 金额当 0');
+assert.strictEqual(calcTotals([{ type: 'unknown', amount: 999 }], 0).transfer, 0, '未知类型忽略');
+assert.strictEqual(calcTotals(null, null).transfer, 0, '全空不抛异常');
+
+// 线上真实数据回归（2026-11-02 取自数据库）
+//
+// ⚠️ 用容差比，不要用 Math.round(x*100)/100 === -6716.91。
+// 真实值是 -6716.905，正好卡在进位分界线上，round 的结果完全取决于浮点
+// 表示落在哪一侧（实测是 -6716.905000000001 所以刚好进位）。
+// 那种断言能过是运气不是设计，换个输入就可能翻车。
+const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.001, `${msg}（实际 ${a}）`);
+
+const live = calcTotals(
+  [{ type: 'shared', amount: 1135.21 }, { type: 'partner_personal', amount: 274.63 },
+   { type: 'partner_paid', amount: 1109.96 }], -6984.63);
+near(live.transfer, -6716.905, '去掉租金项后的裸值');
+
+const withRent = calcTotals(
+  [{ type: 'shared', amount: 1135.21 }, { type: 'partner_personal', amount: 274.63 },
+   { type: 'partner_paid', amount: 1109.96 + 2500 }], -6984.63);
+near(withRent.transfer, -4216.905,
+  '两笔房租进 cp 之后 = 宝宝欠你 4216.91（显示值经 fmt 四舍五入），和 spec 对得上');
+
+console.log('✅ settlement formula OK');
+
 console.log('\n全部通过 ✅');
