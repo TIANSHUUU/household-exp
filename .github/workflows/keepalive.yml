@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 为什么有这个文件
+#
+# Supabase 免费档：**项目 7 天没有任何活动就自动暂停**。2026-11-02 两个项目
+# 都因为 90 天没人碰被暂停，四个页面和电影节同时打不开。暂停还会连 DNS 记录
+# 一起拆掉，从外面看和项目被删一模一样，当时查了很久。复盘见 HANDOFF 第十二节。
+#
+# 这个任务定期查一次数据库，让项目一直算「活跃」。
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: keepalive
+
+on:
+  schedule:
+    # 每周一、周四 03:17 UTC。
+    #
+    # **故意不是每周一次。** 暂停线就是 7 天，而 GitHub 的定时任务在高峰期
+    # 会被延迟、甚至直接跳过（官方明说不保证准点）。卡着 7 天跑等于赌运气，
+    # 跳过一次就暂停了。一周两次留 3–4 天余量。
+    #
+    # 分钟数用 17 而不是 0：整点是定时任务最拥堵的时刻，延迟最严重。
+    - cron: '17 3 * * 1,4'
+  workflow_dispatch:        # Actions 页面可以手动点一次，用来验证
+
+permissions:
+  contents: write           # 心跳那步要推 keepalive 分支
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 查一次数据库
+        run: |
+          set -u
+          # ⚠️ 必须真的查一张表。/auth/v1/health 只摸到网关、不碰 Postgres，
+          #    用它 ping 等于没 ping——项目照样会被判定为不活跃。
+          #
+          # key 明文写在这儿没问题：它本来就在 assets/auth.js 里，
+          # 和整个仓库一起是公开的（见 HANDOFF 第九节）。
+          KEY='sb_publishable_al2tSxbN67a8_frUBnEzYg_dmGNU5g5'
+          URL='https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1/expenses?select=id&limit=1'
+
+          code=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+                   -H "apikey: $KEY" -H "Authorization: Bearer $KEY" "$URL") || code=000
+          echo "HTTP $code"
+
+          # 失败就让整个 workflow 红掉。GitHub 会发邮件——这是一份免费的
+          # 早期预警，比三个月后自己发现页面打不开强得多。
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase 没有正常响应（HTTP $code）。多半是又被暂停了，去 https://supabase.com/dashboard 看一眼；DNS 查不到（NXDOMAIN）也是暂停的症状，不是代码问题。"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: 心跳提交（让 GitHub 的定时器也别睡）
+        run: |
+          set -eu
+          # ⚠️ 第二个坑：**GitHub 会把「超过 60 天没有仓库活动」的定时任务
+          #    自动停用。** 而这个任务存在的全部意义就是应付「几个月没人碰」，
+          #    不做这步它会在最需要它的时候先自己死掉——两个保护一起失效。
+          #
+          # 所以每次顺手推一个时间戳制造仓库活动。几个讲究：
+          #   · 推到独立的 keepalive 分支，不污染 main 的历史，也不会触发
+          #     GitHub Pages 重建（Pages 只认 main）
+          #   · 每次都是全新的 orphan 分支 + 强推，所以那个分支永远只有
+          #     一个提交，不会无限长大
+          #   · 用内置的 GITHUB_TOKEN 推送**不会**触发其他 workflow，
+          #     这是 GitHub 刻意的防循环设计，所以不存在自我触发的死循环
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # 每次都是全新 runner，keepalive-tmp 不该存在；加这行纯粹是让
+          # 本地重放和手动重跑也不会炸（本地测过，不加的话第二次直接 fatal）。
+          git branch -D keepalive-tmp 2>/dev/null || true
+          git checkout --orphan keepalive-tmp
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > last-ping.txt
+          git add -f last-ping.txt
+          git commit -m "keepalive $(date -u +%F)"
+          git push -f origin keepalive-tmp:keepalive
