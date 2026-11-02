@@ -378,10 +378,6 @@
           <span class="val" id="b-carry">—</span>
         </div>
         <div class="brow">
-          <span class="lbl"><span class="bdot" style="background:var(--accent)"></span>我的租金份额</span>
-          <span class="val neutral" id="b-rent">—</span>
-        </div>
-        <div class="brow">
           <span class="lbl"><span class="bdot" style="background:var(--green)"></span>共同开支（全额）</span>
           <span class="val neutral" id="b-shared-total">—</span>
         </div>
@@ -1073,8 +1069,8 @@ function renderSummary() {
   document.getElementById('hero-amount').className   = 'transfer-big '  + (recv ? 'receive' : 'pay');
   document.getElementById('hero-label').textContent  = recv ? '本月宝宝需还给你' : '本月应转给宝宝';
   document.getElementById('hero-num').textContent    = fmt(transfer);
-  document.getElementById('hero-note').textContent   = 'AUD · 下次租金日（' + cfg.rentDay + '日）';
-  document.getElementById('cycle-label').textContent = `本期账单（${cfg.rentDay}日结算）· 共 ${expenses.length} 笔`;
+  document.getElementById('hero-note').textContent   = `AUD · 每月 ${cfg.rentDay} 日自动记租金`;
+  document.getElementById('cycle-label').textContent = `累计账单 · 共 ${expenses.length} 笔`;
   const carryRow = document.getElementById('b-carry-row');
   if (Math.abs(carryover) >= 0.005) {
     carryRow.style.display = 'flex';
@@ -1085,7 +1081,6 @@ function renderSummary() {
   } else {
     carryRow.style.display = 'none';
   }
-  document.getElementById('b-rent').textContent          = `$${fmt(cfg.myRent)}`;
   document.getElementById('b-shared-total').textContent  = `$${fmt(shared)}`;
   document.getElementById('b-shared-half').textContent   = `-$${fmt(shared / 2)}`;
   document.getElementById('b-partner-paid').textContent  = pp > 0 ? `-$${fmt(pp)}` : '$0.00';
@@ -1104,9 +1099,12 @@ function itemRowHtml(e, readonly) {
   // 只有外币记录才多这一段。AUD 记的行显示和以前一模一样。
   const origTxt  = e.origCcy ? fmtOrig(e.origAmount, e.origCcy) : '';
   const subTxt   = origTxt ? `${origTxt} · ${shareTxt}` : shareTxt;
+  // 房租行不给删除按钮：删掉之后下次加载会发现那个 id 不存在，于是
+  // ensureRentRows 又补回来——一行删不掉的鬼行。改金额没问题，编辑保留
+  // 原 id，不会触发补登。真要去掉某个月的房租就把金额改成 0。
   const actions  = readonly ? '' : `<div class="item-actions">
           <button class="edit-btn" onclick="openEdit(${e.id})" title="编辑">✎</button>
-          <button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>
+          ${isRentRow(e) ? '' : `<button class="del-btn"  onclick="askDel(${e.id})"  title="删除">×</button>`}
         </div>`;
   return `<div class="item">
         <span class="item-dot" style="background:${t.dot}"></span>
