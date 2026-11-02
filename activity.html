@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 不要被搜索引擎收录。2026-11-02 去掉登录之后，数据对全网可读可写，
+       「没人知道这个网址」是仅剩的一层遮挡，至少别让它被搜出来。
+       故意不配 robots.txt：这是项目页，robots.txt 只有在域名根目录才算数，
+       而且 Disallow 会让爬虫根本看不到这行 noindex，反而更糟。 -->
+  <meta name="robots" content="noindex, nofollow">
   <title>活动安排</title>
   <link rel="preconnect" href="https://mpvsbeghuueffkjdemcr.supabase.co">
   <style>

@@ -501,7 +501,23 @@ curl -s "$B/tag_i18n?select=zh,en" -H "apikey: $K" -H "Authorization: Bearer $K"
 | AI 翻译 | 任何人，但被 `DAILY_CAP = 20` 挡着，最坏是替你烧掉当天额度，不产生账单 |
 | 列 Storage 目录 | 任何人 |
 
-挡在前面的只剩「没人知道这个网址」。搜索引擎可能收录 GitHub Pages，仓库本身也是公开可搜的。
+挡在前面的只剩「没人知道这个网址」。所以四个页面的 `<head>` 里都加了：
+
+```html
+<meta name="robots" content="noindex, nofollow">
+```
+
+### ⚠️ 故意没有 robots.txt，这是刻意的
+
+两个理由，都反直觉：
+
+**一、位置不对，放了也没用。** 这是**项目页**（`tianshuuu.github.io/household-exp/`），仓库里的 `robots.txt` 只会出现在 `/household-exp/robots.txt`，而爬虫**只认域名根目录**那一个。2026-11-02 实测 `https://tianshuuu.github.io/robots.txt` 是 404——用户根本没有 `tianshuuu.github.io` 那个 user page 仓库。要有真的 robots.txt 得专门建一个。
+
+**二、就算建了也不该用 `Disallow`。** robots.txt 说的是「别爬」，可爬虫不爬就**永远看不到上面那行 noindex**——结果反而可能靠外部链接把 URL 收进搜索结果，而且因为爬不到页面，想再去掉都没辙。
+
+**想真正不被收录，正确姿势是「让它爬、但告诉它别收录」**，也就是只用 noindex。以后如果有人想「补上 robots.txt 更保险」，先读这段。
+
+filmfest 仓库的 `index.html` 里也加了同一行（Vite 会把它带进构建产物，实测 `dist/index.html` 里有）。那边三张表的 RLS 一直是 `using(true)`，同样是全网可读可写。
 
 ### 代码
 
