@@ -760,6 +760,39 @@ function isRentRow(e) {
   return Number.isInteger(id) && id >= 19000101 && id <= 99991231;
 }
 
+// 列出 (afterDate, toDate] 区间内所有的「租金日」，升序。
+//
+// 左开右闭是刻意的：afterDate 要么是账期起始日（当天及以前属于上一期的
+// 结算范围），要么是最后一笔已存在房租行的日期（已经记过了）。两种情况
+// 都不能再记一次，所以左端必须排除。
+//
+// rentDay 超出当月天数时落到当月最后一天：设成 31 的话 2 月记 28/29 号。
+// **不能跳过**——跳过的话那个月的租金就永远不进账了。
+function rentDatesBetween(afterDate, toDate, rentDay) {
+  const day = parseInt(rentDay, 10);
+  if (!afterDate || !toDate) return [];
+  if (!Number.isInteger(day) || day < 1 || day > 31) return [];
+
+  const a = new Date(afterDate + 'T12:00:00');
+  const b = new Date(toDate + 'T12:00:00');
+  if (isNaN(a) || isNaN(b) || !(a < b)) return [];
+
+  const out = [];
+  let y = a.getFullYear(), m = a.getMonth();
+  // 上限 600 个月 = 50 年，纯粹是防死循环的保险丝
+  for (let guard = 0; guard < 600; guard++) {
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const d = new Date(y, m, Math.min(day, lastDay), 12);
+    if (d > b) break;
+    if (d > a) {
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return out;
+}
+
 // ── PURE LOGIC END ──
 
 // ── FX rates ──

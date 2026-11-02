@@ -159,4 +159,52 @@ assert.strictEqual(isRentRow(null), false, 'null 不该抛异常');
 
 console.log('✅ rent row id OK');
 
+// ── 租金日序列 ──
+// 区间是左开右闭 (after, to]。左端开是关键：after 要么是账期起始日
+// （当天及以前属于上一期的结算范围），要么是最后一笔已存在房租行的日期
+// （已经记过了）。两种情况都不能再记一次。
+assert.deepStrictEqual(
+  rentDatesBetween('2026-08-24', '2026-11-02', 22),
+  ['2026-09-22', '2026-10-22'],
+  '当前账期的真实场景：08-24 起到今天，应补 09-22 和 10-22 两笔');
+
+assert.deepStrictEqual(rentDatesBetween('2026-09-22', '2026-11-02', 22), ['2026-10-22'],
+  '已经补过 09-22 之后再跑，只剩 10-22');
+assert.deepStrictEqual(rentDatesBetween('2026-10-22', '2026-11-02', 22), [],
+  '全补完了就该是空的——这条就是幂等性');
+
+// 左端点严格排除
+assert.deepStrictEqual(rentDatesBetween('2026-09-22', '2026-09-22', 22), [],
+  'after 和 to 同一天且正好是租金日，必须为空');
+assert.deepStrictEqual(rentDatesBetween('2026-08-22', '2026-09-30', 22), ['2026-09-22'],
+  'after 当天是租金日，只能从下个月开始');
+
+// 右端点闭合
+assert.deepStrictEqual(rentDatesBetween('2026-09-30', '2026-10-22', 22), ['2026-10-22'],
+  'to 当天是租金日，要算进来');
+
+// 月末钳制：不能跳过，跳过那个月的租金就永远不进账
+assert.deepStrictEqual(rentDatesBetween('2027-01-01', '2027-03-05', 31),
+  ['2027-01-31', '2027-02-28'],
+  '2 月落到 28 号（2027 不是闰年）；3-31 超出 to 所以不在内');
+assert.deepStrictEqual(rentDatesBetween('2028-01-31', '2028-02-29', 31), ['2028-02-29'],
+  '闰年 2 月落到 29 号');
+assert.deepStrictEqual(rentDatesBetween('2026-03-31', '2026-04-30', 31), ['2026-04-30'],
+  '4 月只有 30 天');
+
+// 跨年
+assert.deepStrictEqual(rentDatesBetween('2026-11-30', '2027-01-31', 22),
+  ['2026-12-22', '2027-01-22'], '跨年要连续');
+
+// 坏输入一律返回空数组，绝不抛异常也绝不返回 undefined——
+// 调用方会直接 .map()，返回 undefined 就是白屏
+assert.deepStrictEqual(rentDatesBetween(null, '2026-11-02', 22), [], 'after 为空');
+assert.deepStrictEqual(rentDatesBetween('2026-08-24', null, 22), [], 'to 为空');
+assert.deepStrictEqual(rentDatesBetween('2026-08-24', '2026-11-02', 0),  [], '租金日 0 非法');
+assert.deepStrictEqual(rentDatesBetween('2026-08-24', '2026-11-02', 32), [], '租金日 32 非法');
+assert.deepStrictEqual(rentDatesBetween('2026-08-24', '2026-11-02', null), [], '租金日为空');
+assert.deepStrictEqual(rentDatesBetween('2026-11-02', '2026-08-24', 22), [], 'to 早于 after');
+
+console.log('✅ rent date sequence OK');
+
 console.log('\n全部通过 ✅');
