@@ -952,6 +952,38 @@ function showLoading(on) {
   }
 }
 
+// 把「最后一笔房租行」到今天之间漏掉的房租补上。页面加载时调一次。
+//
+// 水位线取**已有房租行里最晚的那天**，没有才退回账期起始日。不能只看
+// start_date：以后要是把租金日从 22 改成 25，就会去扫每月 25 号，而那个月
+// 22 号已经有一笔了——同一个月记两次租金。
+//
+// 逐笔插入而不是批量：PostgREST 的批量插入是原子的，只要有一笔撞上主键
+// （另一台设备刚补过），整批都会失败，于是永远补不进去。逐笔插入时失败的
+// 那笔跳过，其余照常。
+async function ensureRentRows() {
+  if (!activeCycle || !activeCycle.start_date) return;
+  const today = new Date().toISOString().split('T')[0];
+  const rentDates = expenses.filter(isRentRow).map(e => e.date).sort();
+  const after = rentDates.length ? rentDates[rentDates.length - 1] : activeCycle.start_date;
+  const due = rentDatesBetween(after, today, cfg.rentDay);
+  if (!due.length) return;
+
+  for (const d of due) {
+    try {
+      const [row] = await dbInsert({
+        id: rentRowId(d), date: d, amount: cfg.myRent,
+        description: '房租', type: 'partner_paid', cycle_id: activeCycle.id,
+      });
+      expenses.push(toLocal(row));
+    } catch (e) {
+      // 主键冲突 = 另一台设备刚补过这个月，是正常情况不是错误
+      console.warn('房租补登跳过', d, e.message);
+    }
+  }
+  expenses.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
+}
+
 async function loadExpenses() {
   setSyncDot('busy');
   try {
@@ -967,6 +999,8 @@ async function loadExpenses() {
       const data = await dbGet(activeCycle.id);
       expenses = data.map(toLocal);
     }
+    // 必须放在 expenses 填好之后——要读已有房租行来定水位线
+    await ensureRentRows();
     setSyncDot('ok');
     render();
   } catch(e) {
