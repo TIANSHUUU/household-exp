@@ -141,4 +141,22 @@ assert.strictEqual(
   '三列缺失和三列为 null 必须同签名——否则老数据每 15 秒重渲染一次');
 
 console.log('✅ polling signature OK');
+// ── 房租行 id ──
+// id 用日期派生的理由见 index.html 里 rentRowId 定义处的注释：现有 id 只有
+// Date.now() 的 13 位毫秒戳和种子数据的 1–19 两种来源，8 位日期 id 和两者
+// 都不会撞，所以重复插入必然违反主键约束 —— 补登的幂等性是白送的。
+assert.strictEqual(rentRowId('2026-09-22'), 20260922, '日期转成 8 位整数 id');
+assert.strictEqual(rentRowId('2026-10-22'), 20261022, '跨月');
+assert.strictEqual(rentRowId('2027-01-05'), 20270105, '个位数月日要补零');
+
+// isRentRow 必须能把房租行和另外两种 id 区分开
+assert.strictEqual(isRentRow({ id: 20260922 }), true,  '8 位日期 id 是房租行');
+assert.strictEqual(isRentRow({ id: 1793592786771 }), false, 'Date.now() 毫秒戳不是');
+assert.strictEqual(isRentRow({ id: 5 }), false, '种子数据的小 id 不是');
+assert.strictEqual(isRentRow({ id: 19 }), false, '种子数据最大的 id 也不是');
+assert.strictEqual(isRentRow({}), false, '没有 id 不是');
+assert.strictEqual(isRentRow(null), false, 'null 不该抛异常');
+
+console.log('✅ rent row id OK');
+
 console.log('\n全部通过 ✅');

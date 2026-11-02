@@ -740,6 +740,26 @@ function expenseSig(r) {
   return [r.id, n(r.amount), r.description, r.type, r.date,
           r.orig_currency || '', n(r.orig_amount), n(r.fx_rate)].join(':');
 }
+// 房租行的 id 用日期派生：'2026-09-22' → 20260922。
+//
+// 这么做是为了白拿幂等性。现有 id 只有两种来源：手动录入用 Date.now() 的
+// 13 位毫秒戳，种子数据是 1–19。8 位的日期 id 和两者都不会撞，所以「补登
+// 某个月的房租」重复执行时会直接违反主键约束而失败——**不需要任何「补到
+// 哪了」的状态记录**，多设备同时打开也只会成功一个。
+//
+// 为什么不能用本地水位线：cfg 存在 localStorage（见 loadCfg），是每台设备
+// 各一份的，任何基于它的「上次补到哪」在多设备下都会重复补登。
+function rentRowId(dateStr) {
+  return Number(String(dateStr).slice(0, 10).replace(/-/g, ''));
+}
+
+// 判断一笔开支是不是自动生成的房租行。靠 id 的量级区分：
+// 房租 8 位（19000101–99991231），种子 1–19，手动录入 13 位。
+function isRentRow(e) {
+  const id = Number(e && e.id);
+  return Number.isInteger(id) && id >= 19000101 && id <= 99991231;
+}
+
 // ── PURE LOGIC END ──
 
 // ── FX rates ──
