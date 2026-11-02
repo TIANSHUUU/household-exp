@@ -2,25 +2,27 @@
 
 接手先读 `docs/HANDOFF.md`，那份文档是这个仓库的完整交接说明（架构、数据模型、待办、踩过的坑）。
 
-## 鉴权：所有请求必须走 `await H()`
+## 请求头：所有请求必须走 `await H()`
 
-`assets/auth.js` 管着登录令牌，四个页面共用，**必须在各页面自己的脚本之前加载**（它定义了 `KEY` 和 `H()`）。
+`assets/auth.js` 四个页面共用，**必须在各页面自己的脚本之前加载**（它定义了 `KEY` 和 `H()`）。
 
-数据库的 RLS 只认登录用户，所以每个 PostgREST / Storage 请求都要带令牌：
+**没有登录**（2026-11-02 起，理由见 `docs/HANDOFF.md` 第九节）。`H()` 现在只是拼一个带 publishable key 的请求头，不做网络请求——但它**仍然是 async**，因为四个页面有 30 多处 `await H()`，签名一动就得全改。所以调用形状一个字都没变：
 
 ```js
 fetch(url, { headers: await H() })
 fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=representation' } })
 ```
 
-**加新 fetch 时照抄这个形状。** 写成 `headers: H` 是把函数本身当 header 传出去，请求直接 401。详见 `docs/HANDOFF.md` 第九节。
+**加新 fetch 时照抄这个形状。** 写成 `headers: H` 是把函数本身当 header 传出去，请求直接失败。
+
+⚠️ **数据库对公网可读可写是已知且被用户接受的取舍，不是待修的 bug。** 别自作主张"修"回去，先问用户。详见 `docs/HANDOFF.md` 第九节。
 
 ## 改 `assets/` 必须 bump 版本号
 
 四个页面都引了 `assets/auth.js`，`recipe.html` 另外还引了 `recipe.css` / `recipe.js`：
 
 ```html
-<script src="assets/auth.js?v=2026080312"></script>
+<script src="assets/auth.js?v=2026110201"></script>
 ```
 
 **改了 `assets/` 里任何文件，就要把引用它的页面的 `?v=` 一起 bump。** 格式是 `年月日+两位序号`，同一天改多次就 `01`→`02`。
@@ -34,6 +36,7 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 - 推 `main` 即上线，1–2 分钟生效。没有 CI，没有测试框架。
 - 没有测试框架，自动化验证全靠 `scripts/` 下那几个脚本（见下），**必须从仓库根目录跑**。
 - 建表、建 bucket、部署 Edge Function、改 RLS 策略都得用户在 Supabase 控制台自己操作，会话里没权限。SQL 和代码可以给现成的。
+- **页面打不开、登录失败、数据像是消失了——先 `dig +short @8.8.8.8 mpvsbeghuueffkjdemcr.supabase.co A`。** NXDOMAIN = 免费档项目被暂停了（7 天不活动就暂停），不是代码问题。2026-11-02 栽过一次，白查了很久。见 `docs/HANDOFF.md` 第十二节。
 - **仓库是公开的**，不要提交任何含个人信息的文件（包括真实邮箱地址）。
 
 ## 改完跑这五个检查

@@ -128,10 +128,7 @@ let lang = localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'zh';
 const I18N = {
   zh: {
     appTitle: '家庭食谱', navExpense: '💰 开支', navShopping: '🛒 购物',
-    navActivity: '📅 日程', navLock: '锁定', langBtn: 'EN',
-    lockSub: '请输入密码以继续', lockBtn: '进入',
-    lockNeedPw: '请输入密码', lockWrongPw: '登录失败，请检查密码和网络',
-    lockSigningIn: '登录中…',
+    navActivity: '📅 日程', langBtn: 'EN',
     loading: '正在加载食谱…', loadFailed: '加载失败：{0}',
     searchPh: '搜索菜名或食材…', fridgeBtn: '🧊 冰箱里有什么', newBtn: '+ 新食谱',
     tagAll: '全部', groupByName: '菜名含此词 ({0})', groupByIng: '食材含此词 ({0})',
@@ -173,16 +170,12 @@ const I18N = {
     translateFailed: '翻译失败：{0}',
     translateEmpty: '当前页签是空的，没有可翻译的内容。',
     err_rate_limited: '今天的 AI 次数用完了（每天 20 次，翻译和灵感共用）。明天再来。',
-    err_unauthorized: '登录已过期，请重新登录',
     err_unknown_action: '服务端不认识这个请求',
     err_provider_error: '翻译服务出错了，稍后再试',
   },
   en: {
     appTitle: 'Our Recipes', navExpense: '💰 Expenses', navShopping: '🛒 Shopping',
-    navActivity: '📅 Schedule', navLock: 'Lock', langBtn: '中文',
-    lockSub: 'Enter the password to continue', lockBtn: 'Enter',
-    lockNeedPw: 'Password required', lockWrongPw: 'Sign-in failed — check the password and your connection',
-    lockSigningIn: 'Signing in…',
+    navActivity: '📅 Schedule', langBtn: '中文',
     loading: 'Loading recipes…', loadFailed: 'Could not load: {0}',
     searchPh: 'Search a dish or ingredient…', fridgeBtn: '🧊 What\'s in the fridge', newBtn: '+ New recipe',
     tagAll: 'All', groupByName: 'Name matches ({0})', groupByIng: 'Ingredient matches ({0})',
@@ -224,7 +217,6 @@ const I18N = {
     translateFailed: 'Translation failed: {0}',
     translateEmpty: 'This tab is empty — nothing to translate.',
     err_rate_limited: 'Out of AI calls for today (20/day, shared by translation and ideas). Try again tomorrow.',
-    err_unauthorized: 'Session expired — please sign in again',
     err_unknown_action: 'The server did not recognise this request',
     err_provider_error: 'The translation service errored — try again shortly',
   },
@@ -256,12 +248,9 @@ function tagLabel(zh) {
   return hit ? hit.en : zh;
 }
 
-// 顶栏和密码门是写在 HTML 里的静态文案，切语言时要手动刷
+// 顶栏是写在 HTML 里的静态文案，切语言时要手动刷
 function paintChrome() {
   const set = (id, txt) => { const e = $(id); if (e) e.textContent = txt; };
-  set('lock-title', t('appTitle'));
-  set('lock-sub', t('lockSub'));
-  set('lock-btn', t('lockBtn'));
   // 三个跳转按钮拆成 emoji + 文字两段，好让窄屏 CSS 只留 emoji。
   // 英文标签（Expenses/Shopping/Schedule）比中文的（开支/购物/日程）长一倍，
   // 不拆的话 375px 手机上顶栏会撑到 485px，整页横向滚动。
@@ -276,49 +265,10 @@ function paintChrome() {
   setNav('nav-expense', t('navExpense'));
   setNav('nav-shopping', t('navShopping'));
   setNav('nav-activity', t('navActivity'));
-  set('nav-lock', t('navLock'));            // 「锁定」/「Lock」没有 emoji，不用拆
   set('lang-btn', t('langBtn'));
   const h1 = $('app-title');
   if (h1) h1.childNodes[0].nodeValue = t('appTitle');
-  const li = $('lock-input');
-  if (li) li.placeholder = lang === 'en' ? 'password' : '••••••••';
   document.title = t('appTitle');
-}
-
-// ── 密码门（登录态由 assets/auth.js 统一管，四页共用） ──
-let signingIn = false;
-async function unlock() {
-  const inp = $('lock-input'), err = $('lock-error'), btn = $('lock-btn');
-  if (signingIn) return;                       // 登录要走网络，连点会发多个请求
-  if (!inp.value) { err.textContent = t('lockNeedPw'); return; }
-  signingIn = true;
-  err.textContent = '';
-  if (btn) { btn.disabled = true; btn.textContent = t('lockSigningIn'); }
-  const ok = await signIn(inp.value);
-  signingIn = false;
-  if (btn) { btn.disabled = false; btn.textContent = t('lockBtn'); }
-  if (ok) {
-    inp.value = '';
-    enterApp();
-  } else {
-    err.textContent = t('lockWrongPw');
-    inp.classList.add('error');
-    inp.value = '';
-    setTimeout(() => inp.classList.remove('error'), 400);
-  }
-}
-function enterApp() {
-  $('lock-screen').classList.add('hidden');
-  $('app').classList.add('visible');
-  $('lock-error').textContent = '';
-  initApp();
-}
-function lockApp() {
-  signOut();
-  $('lock-screen').classList.remove('hidden');
-  $('app').classList.remove('visible');
-  $('lock-input').value = '';
-  $('lock-error').textContent = '';
 }
 
 // ── 灯箱 ──
@@ -1238,7 +1188,6 @@ async function callKitchenAI(action, payload) {
   try { j = await r.json(); } catch (e) { /* 下面按 HTTP 状态处理 */ }
   if (j && j.ok) return j.data;
   const code = (j && j.error) || ('http_' + r.status);
-  if (r.status === 401) lockApp();     // 令牌失效，回登录页
 
   // 友好文案 + 原始详情一起抛。只给友好文案会把「Gemini 404: 模型不存在」
   // 这种唯一有用的信息吞掉，然后只能干瞪眼——2026-08-03 部署时就踩了。
@@ -1304,11 +1253,5 @@ setInterval(poll, 15000);
 // 处于暂时性死区，提前调用 initApp() 会在 `if (loaded)` 上抛 ReferenceError。
 document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
 paintChrome();
-// 本地存着令牌就续一次，续得上才直接进 app；续不上就老实显示登录页。
-(async () => {
-  if (await resumeSession()) {
-    enterApp();
-  } else {
-    $('lock-input').focus();
-  }
-})();
+// 2026-11-02 起没有登录门了，直接起 app。
+initApp();

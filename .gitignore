@@ -12,5 +12,7 @@ recipe-details/
 requirement.md
 shopping_list.md
 
-# scripts/get-token.py 换来的登录令牌。仓库是公开的，绝不能提交。
+# 旧的登录令牌。2026-11-02 登录整套拿掉了，scripts/get-token.py 也删了，
+# 所以这个文件不会再产生——规则留着防止历史遗留的那份被误提交。
+# 仓库是公开的，绝不能提交。工作区里如果还有一份，是死文件，rm 掉即可。
 .token

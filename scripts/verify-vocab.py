@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """检查线上食材词表有没有冲突，并跑几组已知断言。
 
-先跑 `python3 scripts/get-token.py` 换令牌，再跑这个。
+直接跑就行，不需要令牌（2026-11-02 起数据库对匿名开放，见 docs/HANDOFF.md 第九节）。
 
 为什么需要它：`assets/recipe.js` 的 buildAliasMap 用 Map.set 建查找表，
 **同一个词指向两个 canonical 时会静默覆盖**——症状是搜索和冰箱匹配莫名
@@ -11,7 +11,6 @@
 以后网页手动录入引入新的冲突词条，所以这个检查值得反复跑。
 """
 import json
-import os
 import re
 import sys
 import urllib.request
@@ -37,19 +36,15 @@ def norm_key(s):
 
 
 def main():
-    if not os.path.exists('.token'):
-        sys.exit('没找到 .token，先跑：python3 scripts/get-token.py')
-    token = open('.token').read().strip()
-
     req = urllib.request.Request(
         f'{API}/ingredient_vocab?select=canonical,aliases,staple&order=canonical.asc',
-        headers={'apikey': KEY, 'Authorization': f'Bearer {token}'},
+        headers={'apikey': KEY, 'Authorization': f'Bearer {KEY}'},
     )
     try:
         with urllib.request.urlopen(req) as r:
             vocab = json.load(r)
     except Exception as e:
-        sys.exit(f'读词表失败（令牌过期了？重跑 get-token.py）：{e}')
+        sys.exit(f'读词表失败（项目是不是又被暂停了？见 HANDOFF 第十二节）：{e}')
 
     print(f'词表 {len(vocab)} 条，staple {sum(1 for v in vocab if v["staple"])} 条\n')
 

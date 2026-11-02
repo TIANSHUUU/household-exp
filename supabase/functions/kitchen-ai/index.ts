@@ -11,16 +11,19 @@
 //
 // SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 由平台自动注入，不用手动配。
 //
-// 鉴权：**部署时把 Verify JWT 关掉**，函数自己验（见 verifyUser）。
+// 鉴权：**没有了**（2026-11-02）。网页那套登录整体拿掉了，页面只带
+// publishable key，而 publishable key 不是用户令牌——原来的 verifyUser 会把它
+// 一律拒掉，翻译功能会整体 401。所以 verifyUser 一起删了。
 //
-// 为什么不用平台的 Verify JWT——它会连浏览器的 CORS 预检一起拦掉。网页在
-// tianshuuu.github.io，函数在 supabase.co，跨域；浏览器发正式请求前先发一个
-// OPTIONS 预检探路，而**预检按规范不带 Authorization 头**。平台的 JWT 检查在
-// 函数之前执行，预检拿 401，浏览器就判定跨域失败，正式请求根本不会发出去。
-// 下面第一行的 OPTIONS 处理救不了——请求到不了这儿。
+// **部署时 Verify JWT 仍然必须关掉**。理由和原来一样，而且现在更重要：平台的
+// JWT 检查在函数之前执行，而页面根本不再带用户令牌，开着的话每个请求都 401。
+// 另外它会连 CORS 预检一起拦——预检按规范不带 Authorization 头，被拦掉浏览器
+// 就判定跨域失败，正式请求根本不会发出去，而 curl 测却一切正常，很容易查半天。
 //
-// 所以鉴权放在函数里：拿到 Bearer 令牌后问一次 auth 服务「这是谁」，验不过
-// 就 401。匿名 key 也长得像 Bearer 令牌，但它不是用户令牌，问出来会被拒。
+// 现在还剩两道防线，都不是鉴权，但够用：
+//   1. ALLOWED_ORIGINS —— 只在浏览器里起作用，curl 绕得过去
+//   2. DAILY_CAP = 20  —— 真正的那道。最坏情况是有人每天帮你烧掉 20 次免费
+//      额度，翻译当天不可用，不会产生账单（Gemini 免费档，没绑支付方式）
 
 // 对齐 Google 免费档 Gemini Flash 的 RPD（20 次/天）。设得比它高没有意义：
 // 先撞墙的是 Google，用户看到的会是一段英文 429，而不是 err_rate_limited
@@ -43,28 +46,6 @@ function corsHeaders(origin: string | null) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   };
-}
-
-// ── 鉴权 ──
-// 令牌拿去问 auth 服务，200 才算数。**验不过一律拒绝**——和下面的日限额
-// 相反，那个拿不到环境变量时选择放行（宁可多花几次额度也别误伤用户），
-// 这个必须失败即关门，否则配置一出问题就等于没有鉴权。
-async function verifyUser(req: Request): Promise<boolean> {
-  const auth = req.headers.get('Authorization') || '';
-  if (!auth.startsWith('Bearer ')) return false;
-
-  const url = Deno.env.get('SUPABASE_URL');
-  const svc = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !svc) return false;
-
-  try {
-    const r = await fetch(`${url}/auth/v1/user`, {
-      headers: { Authorization: auth, apikey: svc },
-    });
-    return r.ok;
-  } catch {
-    return false;
-  }
 }
 
 // ── 供应商适配器：同一个签名，换供应商不影响调用方 ──
@@ -239,8 +220,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
 
-  // 注意顺序：OPTIONS 预检必须在鉴权之前放行，它按规范不带 Authorization。
-  if (!await verifyUser(req)) return json({ ok: false, error: 'unauthorized' }, 401);
+  // 2026-11-02 起这里不再鉴权，见文件顶部。唯一的闸门是下面的 bumpUsage()。
 
   let body: any;
   try { body = await req.json(); } catch { return json({ ok: false, error: 'bad_json' }, 400); }
