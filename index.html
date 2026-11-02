@@ -467,7 +467,7 @@
     <div class="handle"></div>
     <div class="sheet-title">设置</div>
     <div class="srow">
-      <div class="srow-lbl">我的租金份额<small>每月转给宝宝的基础金额</small></div>
+      <div class="srow-lbl">每月租金<small>每月自动记一笔「宝宝替我垫付」</small></div>
       <input type="number" class="sinput" id="s-myrent" placeholder="1250">
     </div>
     <div class="srow">
@@ -956,6 +956,7 @@ async function loadExpenses() {
   setSyncDot('busy');
   try {
     activeCycle = await dbGetActiveCycle();
+    cfgFromCycle(activeCycle);
     if (!activeCycle) {
       // 全新数据库：引导建立首期账期并写入种子数据
       activeCycle = await dbInsertCycle({ label: '首期账单', start_date: SEED[0].date, status: 'active', carryover: 0 });
@@ -1001,6 +1002,19 @@ function loadCfg() {
   if (raw) cfg = { ...cfg, ...JSON.parse(raw) };
 }
 function saveCfg() { localStorage.setItem(SET_KEY, JSON.stringify(cfg)); }
+
+// 租金配置以数据库为准，localStorage 只是没读到时的兜底。
+//
+// 为什么必须搬进数据库：cfg 存在 localStorage，是**每台设备各一份的**。
+// 租金从「显示用的公式参数」变成「写进数据库的真实金额」之后，两边不一致
+// 就会出事——同一个月的租金记成多少，取决于谁先打开网页，而且因为房租行
+// 的 id 按日期派生（幂等），先写的那个值会永久固定下来。
+function cfgFromCycle(c) {
+  if (!c) return;
+  if (c.rent_amount != null) cfg.myRent  = parseFloat(c.rent_amount);
+  if (c.rent_day    != null) cfg.rentDay = parseInt(c.rent_day, 10);
+  saveCfg();   // 同步一份到 localStorage，纯粹是下次打开时的首屏兜底
+}
 
 // ── Calc ──
 // 数学在 PURE LOGIC 段的 calcTotals 里，这里只负责把全局状态喂进去。
@@ -1226,12 +1240,22 @@ function openSettings() {
   document.getElementById('s-rentday').value = cfg.rentDay;
   document.getElementById('set-overlay').classList.add('open');
 }
-function saveSettings() {
+async function saveSettings() {
   const myRent  = parseFloat(document.getElementById('s-myrent').value);
   const rentDay = parseInt(document.getElementById('s-rentday').value);
   if (!myRent || !rentDay || rentDay < 1 || rentDay > 31) { alert('请填写有效的设置值'); return; }
-  cfg = { myRent, rentDay }; saveCfg(); render();
-  document.getElementById('set-overlay').classList.remove('open');
+  if (!activeCycle) { alert('账期尚未加载，请刷新页面重试'); return; }
+  setSyncDot('busy');
+  try {
+    // 写数据库而不是只写 localStorage——两人两台设备必须看到同一个租金
+    await dbUpdateCycle(activeCycle.id, { rent_amount: myRent, rent_day: rentDay });
+    activeCycle.rent_amount = myRent;
+    activeCycle.rent_day    = rentDay;
+    cfg = { myRent, rentDay }; saveCfg();
+    setSyncDot('ok');
+    render();
+    document.getElementById('set-overlay').classList.remove('open');
+  } catch (e) { console.error(e); setSyncDot('err'); alert('保存失败，请检查网络后重试'); }
 }
 async function newCycle() {
   if (!activeCycle) { alert('账期尚未初始化，请刷新页面重试'); return; }
