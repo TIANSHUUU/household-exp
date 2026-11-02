@@ -472,9 +472,8 @@
     </div>
     <button class="submit" onclick="saveSettings()">保存</button>
     <div class="danger-zone">
-      <div class="danger-title">账期</div>
-      <button class="cycle-btn" onclick="newCycle()">归档本期，开始新账期</button>
-      <div class="cycle-hint">本期结余（应转/欠款）将自动滚入下一期冲抵。本期明细会完整保存到「往期记录」，不会被删除。</div>
+      <div class="danger-title">关于房租</div>
+      <div class="cycle-hint">每月 <span id="s-rentday-echo">22</span> 日自动记一笔「宝宝替我垫付」。改上面的金额只影响以后生成的，已经记上的保留当时金额。房租行可以改金额但不能删——删了下次打开会自动补回来，真要去掉就把金额改成 0。</div>
     </div>
   </div>
 </div>
@@ -1260,8 +1259,11 @@ function showUndoToast(desc) {
   document.getElementById('undo-text').textContent = `已删除「${desc}」`;
   document.getElementById('undo-toast').classList.add('show');
   // 30 秒不是 5 秒——5 秒真的会错过（2026-08-04 实测就没看到）。
-  // 但别改成常驻：pendingDelRow 冻着删除那一刻的 cycle_id，而 newCycle() 归档时
-  // 不清它，撤销窗口越长，越可能把一笔账插回已经结算完的账期，明细和结算额从此对不上。
+  //
+  // 2026-11-02 之前这里还有第二个理由：pendingDelRow 冻着删除那一刻的
+  // cycle_id，而归档时不清它，撤销窗口太长就可能把一笔账插回已经结算完的
+  // 账期。归档功能删掉之后只剩一个永远活跃的账期，这个风险没有了。
+  // 但仍然别改成常驻——一个永不消失的浮层挡着内容就是烦人。
   undoTimer = setTimeout(hideUndoToast, 30000);
 }
 function hideUndoToast() { clearTimeout(undoTimer); document.getElementById('undo-toast').classList.remove('show'); }
@@ -1270,6 +1272,7 @@ function hideUndoToast() { clearTimeout(undoTimer); document.getElementById('und
 function openSettings() {
   document.getElementById('s-myrent').value  = cfg.myRent;
   document.getElementById('s-rentday').value = cfg.rentDay;
+  document.getElementById('s-rentday-echo').textContent = cfg.rentDay;
   document.getElementById('set-overlay').classList.add('open');
 }
 async function saveSettings() {
@@ -1289,29 +1292,6 @@ async function saveSettings() {
     document.getElementById('set-overlay').classList.remove('open');
   } catch (e) { console.error(e); setSyncDot('err'); alert('保存失败，请检查网络后重试'); }
 }
-async function newCycle() {
-  if (!activeCycle) { alert('账期尚未初始化，请刷新页面重试'); return; }
-  const { transfer } = calc();
-  const recv = transfer < 0;
-  const msg = recv
-    ? `本期结算：宝宝欠你 $${fmt(transfer)}。\n归档后这笔金额会滚入新账期，下期你少转这么多。\n本期 ${expenses.length} 笔明细将保存到「往期记录」。确定吗？`
-    : `本期结算：你应转给宝宝 $${fmt(transfer)}。\n归档后这笔金额会滚入新账期。\n本期 ${expenses.length} 笔明细将保存到「往期记录」。确定吗？`;
-  if (!confirm(msg)) return;
-  setSyncDot('busy');
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    await dbUpdateCycle(activeCycle.id, { status: 'archived', end_date: today, transfer });
-    activeCycle = await dbInsertCycle({ label: cycleLabel(today), start_date: today, status: 'active', carryover: transfer });
-    expenses = [];
-    setSyncDot('ok'); render();
-    document.getElementById('set-overlay').classList.remove('open');
-  } catch(e) { console.error(e); setSyncDot('err'); }
-}
-
-function cycleLabel(startDate) {
-  const d = new Date(startDate + 'T12:00:00');
-  return `${d.getMonth() + 1}月账期`;
-}
 function fmtShort(ds) {
   if (!ds) return '';
   const d = new Date(ds + 'T12:00:00');
@@ -1329,7 +1309,7 @@ async function openDrawer() {
   try {
     const cycles = await dbGetArchivedCycles();
     if (!cycles.length) {
-      body.innerHTML = '<div class="cyc-empty">暂无往期账单<br>归档当前账期后<br>历史记录会出现在这里</div>';
+      body.innerHTML = '<div class="cyc-empty">暂无往期账单<br>2026-11-02 起不再归档<br>这里只保留此前的历史记录</div>';
       return;
     }
     body.innerHTML = cycles.map(c => {
