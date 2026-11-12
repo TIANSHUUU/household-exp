@@ -278,4 +278,26 @@ assert.strictEqual(currencyOptionLabel({ code:'AUD' }, 'zh'), 'AUD', '缺 name �
 
 console.log('✅ currency option label OK');
 
+// ── 日期格式化 ──
+// 星期下标从 0=周日 开始，差一位是这里最经典的错，所以两端都要断言。
+assert.strictEqual(fmtDateIn('2026-11-12', 'zh'), '11月12日 · 周四', '中文：月日 + 星期');
+assert.strictEqual(fmtDateIn('2026-11-12', 'en'), 'Nov 12 · Thu', '英文：月缩写 + 日 + 星期缩写');
+
+// 两端边界：下标 0（周日）和下标 6（周六）
+assert.strictEqual(fmtDateIn('2026-11-15', 'zh'), '11月15日 · 周日', '周日是下标 0');
+assert.strictEqual(fmtDateIn('2026-11-15', 'en'), 'Nov 15 · Sun', '周日是下标 0（英文）');
+assert.strictEqual(fmtDateIn('2026-11-14', 'zh'), '11月14日 · 周六', '周六是下标 6');
+assert.strictEqual(fmtDateIn('2026-11-14', 'en'), 'Nov 14 · Sat', '周六是下标 6（英文）');
+
+// 月份两端：1 月（下标 0）和 12 月（下标 11）
+assert.strictEqual(fmtDateIn('2027-01-01', 'zh'), '1月1日 · 周五', '1 月是下标 0');
+assert.strictEqual(fmtDateIn('2027-01-01', 'en'), 'Jan 1 · Fri', '1 月是下标 0（英文）');
+assert.strictEqual(fmtDateIn('2026-12-31', 'zh'), '12月31日 · 周四', '12 月是下标 11');
+assert.strictEqual(fmtDateIn('2026-12-31', 'en'), 'Dec 31 · Thu', '12 月是下标 11（英文）');
+
+// 语言未知回退中文
+assert.strictEqual(fmtDateIn('2026-11-12', undefined), '11月12日 · 周四', '语言未知回退中文');
+
+console.log('✅ date formatting OK');
+
 console.log('\n全部通过 ✅');

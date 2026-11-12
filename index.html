@@ -820,6 +820,24 @@ function currencyOptionLabel(c, lng) {
   return c.code + ' ' + c.name;
 }
 
+// 日期显示。抽成纯函数是为了能断言——星期下标从 0=周日 开始，
+// 差一位的 bug 在界面上就是「周四显示成周三」，不盯着根本发现不了。
+//
+// 用 T12:00:00 而不是 T00:00:00：澳洲是 UTC+10/+11，用 00:00 构造的话
+// new Date 在某些时区会退回前一天。这个写法是从原来的 fmtDate 抄过来的，
+// 不要「顺手优化」掉。
+function fmtDateIn(ds, lng) {
+  const d = new Date(ds + 'T12:00:00');
+  if (lng === 'en') {
+    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const wk = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return `${mo[d.getMonth()]} ${d.getDate()} · ${wk[d.getDay()]}`;
+  }
+  const mo = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const wk = ['周日','周一','周二','周三','周四','周五','周六'];
+  return `${mo[d.getMonth()]}${d.getDate()}日 · ${wk[d.getDay()]}`;
+}
+
 // ── PURE LOGIC END ──
 
 // ── i18n ──
@@ -1104,12 +1122,8 @@ function calc() {
 
 // ── Format ──
 const fmt = n => Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 });
-function fmtDate(ds) {
-  const d  = new Date(ds + 'T12:00:00');
-  const mo = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-  const wk = ['周日','周一','周二','周三','周四','周五','周六'];
-  return `${mo[d.getMonth()]}${d.getDate()}日 · ${wk[d.getDay()]}`;
-}
+// 薄封装，真正的逻辑在 PURE LOGIC 段的 fmtDateIn 里（那边能被断言）
+function fmtDate(ds) { return fmtDateIn(ds, lang); }
 
 // ── Render ──
 function renderSummary() {
