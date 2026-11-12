@@ -355,11 +355,11 @@
     <div class="topbar-inner">
       <h1>家庭账单<span class="sync-dot ok" id="sync-dot"></span></h1>
       <div class="topbar-actions">
-        <button class="icon-btn" onclick="openDrawer()">☰ 往期</button>
-        <a class="icon-btn" href="shopping.html" style="text-decoration:none;display:inline-block">🛒 购物</a>
-        <a class="icon-btn" href="activity.html" style="text-decoration:none;display:inline-block">📅 日程</a>
-        <a class="icon-btn" href="recipe.html" style="text-decoration:none;display:inline-block">🍳 食谱</a>
-        <button class="icon-btn" onclick="openSettings()">设置</button>
+        <button class="icon-btn" id="nav-drawer" onclick="openDrawer()">☰ 往期</button>
+        <a class="icon-btn" id="nav-shopping" href="shopping.html" style="text-decoration:none;display:inline-block">🛒 购物</a>
+        <a class="icon-btn" id="nav-activity" href="activity.html" style="text-decoration:none;display:inline-block">📅 日程</a>
+        <a class="icon-btn" id="nav-recipe" href="recipe.html" style="text-decoration:none;display:inline-block">🍳 食谱</a>
+        <button class="icon-btn" id="nav-settings" onclick="openSettings()">设置</button>
       </div>
     </div>
   </header>
@@ -369,7 +369,7 @@
       <div class="summary-cycle" id="cycle-label">本期账单</div>
       <div class="transfer-hero pay" id="hero">
         <div class="transfer-label" id="hero-label">本月应转给宝宝</div>
-        <div class="transfer-big pay" id="hero-amount"><span class="sym">$</span><span id="hero-num">—</span></div>
+        <div class="transfer-big pay" id="hero-amount"><span class="sym" id="hero-sym">$</span><span id="hero-num">—</span></div>
         <div class="transfer-note" id="hero-note">AUD</div>
       </div>
       <div class="breakdown">
@@ -378,19 +378,19 @@
           <span class="val" id="b-carry">—</span>
         </div>
         <div class="brow">
-          <span class="lbl"><span class="bdot" style="background:var(--green)"></span>共同开支（全额）</span>
+          <span class="lbl" id="b-shared-total-lbl"><span class="bdot" style="background:var(--green)"></span>共同开支（全额）</span>
           <span class="val neutral" id="b-shared-total">—</span>
         </div>
         <div class="brow" style="padding-left:15px">
-          <span class="lbl">└ 其中抵扣（÷2）</span>
+          <span class="lbl" id="b-shared-half-lbl">└ 其中抵扣（÷2）</span>
           <span class="val positive" id="b-shared-half">—</span>
         </div>
         <div class="brow">
-          <span class="lbl"><span class="bdot" style="background:var(--orange)"></span>替宝宝垫付（全额抵扣）</span>
+          <span class="lbl" id="b-partner-paid-lbl"><span class="bdot" style="background:var(--orange)"></span>替宝宝垫付（全额抵扣）</span>
           <span class="val positive" id="b-partner-paid">—</span>
         </div>
         <div class="brow">
-          <span class="lbl"><span class="bdot" style="background:var(--red)"></span>宝宝替我垫付</span>
+          <span class="lbl" id="b-covered-lbl"><span class="bdot" style="background:var(--red)"></span>宝宝替我垫付</span>
           <span class="val negative" id="b-covered">—</span>
         </div>
       </div>
@@ -398,14 +398,14 @@
 
     <div class="add-row">
       <button class="add-main-btn" onclick="openAdd()">
-        <span class="plus">＋</span> 添加开支
+        <span class="plus">＋</span> <span id="add-fab">添加开支</span>
       </button>
     </div>
 
     <div id="list"></div>
     <div class="empty" id="empty" style="display:none">
       <div class="empty-icon">📋</div>
-      <div class="empty-text">暂无记录<br>点击上方按钮添加开支</div>
+      <div class="empty-text" id="empty-text">暂无记录<br>点击上方按钮添加开支</div>
     </div>
   </div>
 </div>
@@ -416,11 +416,11 @@
     <div class="handle"></div>
     <div class="sheet-title" id="add-sheet-title">添加开支</div>
     <div class="fgrp">
-      <label class="flabel">日期</label>
+      <label class="flabel" id="f-date-lbl">日期</label>
       <input type="date" class="finput" id="f-date" onchange="onDateChange()">
     </div>
     <div class="fgrp">
-      <label class="flabel">金额</label>
+      <label class="flabel" id="f-amount-lbl">金额</label>
       <div class="amt-row">
         <input type="number" class="finput" id="f-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal" oninput="onAmountInput()">
         <select class="finput ccy-select" id="f-ccy" onchange="onCcyChange()"></select>
@@ -439,18 +439,18 @@
       </div>
     </div>
     <div class="fgrp">
-      <label class="flabel">描述</label>
+      <label class="flabel" id="f-desc-lbl">描述</label>
       <input type="text" class="finput" id="f-desc" placeholder="grocery / petrol / ...">
     </div>
     <div class="fgrp">
-      <label class="flabel">类型</label>
+      <label class="flabel" id="f-type-lbl">类型</label>
       <div class="seg">
         <input type="radio" name="ftype" id="ft-shared"  value="shared" checked>
-        <label class="seg-lbl" for="ft-shared">共同分担<small>各付一半</small></label>
+        <label class="seg-lbl" id="seg-shared" for="ft-shared">共同分担<small>各付一半</small></label>
         <input type="radio" name="ftype" id="ft-partner" value="partner_personal">
-        <label class="seg-lbl" for="ft-partner">替宝宝垫付<small>全额抵扣</small></label>
+        <label class="seg-lbl" id="seg-partner" for="ft-partner">替宝宝垫付<small>全额抵扣</small></label>
         <input type="radio" name="ftype" id="ft-covered" value="partner_paid">
-        <label class="seg-lbl" for="ft-covered">宝宝替我垫<small>全额增加</small></label>
+        <label class="seg-lbl" id="seg-covered" for="ft-covered">宝宝替我垫<small>全额增加</small></label>
       </div>
     </div>
     <button class="submit" id="add-submit-btn" onclick="submitExpense()">添加</button>
@@ -461,19 +461,19 @@
 <div class="overlay" id="set-overlay" onclick="overlayClick(event,'set-overlay')">
   <div class="sheet">
     <div class="handle"></div>
-    <div class="sheet-title">设置</div>
+    <div class="sheet-title" id="set-title">设置</div>
     <div class="srow">
-      <div class="srow-lbl">每月租金<small>每月自动记一笔「宝宝替我垫付」</small></div>
+      <div class="srow-lbl" id="set-rent-lbl">每月租金<small>每月自动记一笔「宝宝替我垫付」</small></div>
       <input type="number" class="sinput" id="s-myrent" placeholder="1250">
     </div>
     <div class="srow">
-      <div class="srow-lbl">租金日<small>每月几号自动记租金</small></div>
+      <div class="srow-lbl" id="set-rentday-lbl">租金日<small>每月几号自动记租金</small></div>
       <input type="number" class="sinput" id="s-rentday" placeholder="22" min="1" max="31">
     </div>
-    <button class="submit" onclick="saveSettings()">保存</button>
+    <button class="submit" id="set-save-btn" onclick="saveSettings()">保存</button>
     <div class="danger-zone">
-      <div class="danger-title">关于房租</div>
-      <div class="cycle-hint">每月 <span id="s-rentday-echo">22</span> 日自动记一笔「宝宝替我垫付」。改上面的金额只影响以后生成的，已经记上的保留当时金额。房租行可以改金额但不能删——删了下次打开会自动补回来，真要去掉就把金额改成 0。</div>
+      <div class="danger-title" id="rent-section-title">关于房租</div>
+      <div class="cycle-hint" id="rent-hint">每月 22 日自动记一笔「宝宝替我垫付」。改上面的金额只影响以后生成的，已经记上的保留当时金额。房租行可以改金额但不能删——删了下次打开会自动补回来，真要去掉就把金额改成 0。</div>
     </div>
   </div>
 </div>
@@ -482,7 +482,7 @@
 <div class="drawer-overlay" id="drawer-overlay" onclick="overlayClick2(event,'drawer-overlay')">
   <div class="drawer">
     <div class="drawer-head">
-      <span class="drawer-title">往期记录</span>
+      <span class="drawer-title" id="drawer-title">往期记录</span>
       <button class="drawer-close" onclick="closeDrawer()">✕</button>
     </div>
     <div id="drawer-body"></div>
@@ -502,11 +502,11 @@
 <div class="confirm-overlay" id="confirm-overlay">
   <div class="confirm-box">
     <div class="confirm-icon">🗑️</div>
-    <div class="confirm-title">确认删除？</div>
+    <div class="confirm-title" id="confirm-title">确认删除？</div>
     <div class="confirm-desc" id="confirm-desc"></div>
     <div class="confirm-btns">
-      <button class="cbtn-cancel" onclick="cancelDel()">取消</button>
-      <button class="cbtn-delete" onclick="confirmDel()">删除</button>
+      <button class="cbtn-cancel" id="btn-cancel-del" onclick="cancelDel()">取消</button>
+      <button class="cbtn-delete" id="btn-confirm-del" onclick="confirmDel()">删除</button>
     </div>
   </div>
 </div>
@@ -514,7 +514,7 @@
 <!-- Undo Toast -->
 <div class="undo-toast" id="undo-toast">
   <span class="undo-text" id="undo-text">已删除</span>
-  <button class="undo-btn" onclick="undoDel()">撤销操作</button>
+  <button class="undo-btn" id="btn-undo" onclick="undoDel()">撤销操作</button>
 </div>
 
 <button class="fab" onclick="openAdd()">+</button>
@@ -995,6 +995,54 @@ function setLang(l) {
 }
 function toggleLang() { setLang(lang === 'en' ? 'zh' : 'en'); }
 
+// HTML 里写死的静态文案，切语言时要手动刷一遍。
+// 动态渲染出来的部分（开支行、汇总数值）由 render() 负责，不在这儿。
+function paintChrome() {
+  const set  = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  const html = (id, s)   => { const e = document.getElementById(id); if (e) e.innerHTML   = s;  };
+
+  document.title = t('appTitle');
+  const h1 = document.querySelector('.topbar h1');
+  if (h1) h1.childNodes[0].nodeValue = t('appTitle');   // 后面还跟着同步小圆点，只能换第一个文本节点
+
+  set('nav-drawer', t('navDrawer'));     set('nav-shopping', t('navShopping'));
+  set('nav-activity', t('navActivity')); set('nav-recipe', t('navRecipe'));
+  set('nav-settings', t('navSettings')); set('lang-btn', t('langBtn'));
+
+  set('b-shared-total-lbl', t('bSharedTotal'));
+  set('b-shared-half-lbl',  t('bSharedHalf'));
+  set('b-partner-paid-lbl', t('bPartnerPaid'));
+  set('b-covered-lbl',      t('bCovered'));
+
+  set('add-fab', t('addFab'));
+  html('empty-text', t('emptyList'));
+
+  set('f-date-lbl', t('fDate'));   set('f-amount-lbl', t('fAmount'));
+  set('f-desc-lbl', t('fDesc'));   set('f-type-lbl', t('fType'));
+  html('seg-shared',  t('typeShared')           + '<small>' + t('segSharedSub')  + '</small>');
+  html('seg-partner', t('typePartnerPersonal')  + '<small>' + t('segPartnerSub') + '</small>');
+  html('seg-covered', t('typePartnerPaid')      + '<small>' + t('segCoveredSub') + '</small>');
+
+  set('set-title', t('setTitle'));
+  html('set-rent-lbl',    t('setRent')    + '<small>' + t('setRentSub')    + '</small>');
+  html('set-rentday-lbl', t('setRentDay') + '<small>' + t('setRentDaySub') + '</small>');
+  set('set-save-btn', t('btnSave'));
+  set('rent-section-title', t('rentSectionTitle'));
+  set('rent-hint', t('rentHint', cfg.rentDay));
+
+  set('drawer-title', t('drawerTitle'));
+  set('confirm-title', t('confirmDelTitle'));
+  set('btn-cancel-del', t('btnCancel'));
+  set('btn-confirm-del', t('btnDelete'));
+  set('btn-undo', t('btnUndo'));
+
+  const fx = document.getElementById('fx-refresh');
+  if (fx) fx.title = t('fxRefreshTitle');
+
+  // 货币下拉框的选项文字也跟着语言变
+  fillCurrencySelect();
+}
+
 // ── FX rates ──
 // ⚠️ 这是第三方 API，不是 Supabase。**绝对不要给它带 await H()**——
 // 那会把登录令牌泄露给 frankfurter.dev。整个仓库只有这一处 fetch 不带 H()。
@@ -1450,7 +1498,7 @@ function hideUndoToast() { clearTimeout(undoTimer); document.getElementById('und
 function openSettings() {
   document.getElementById('s-myrent').value  = cfg.myRent;
   document.getElementById('s-rentday').value = cfg.rentDay;
-  document.getElementById('s-rentday-echo').textContent = cfg.rentDay;
+  document.getElementById('rent-hint').textContent = t('rentHint', cfg.rentDay);
   document.getElementById('set-overlay').classList.add('open');
 }
 async function saveSettings() {
