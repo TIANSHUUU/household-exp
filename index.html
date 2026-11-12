@@ -712,18 +712,20 @@ function fxNoteDate(requestedDate, actualDate) {
   return actualDate;
 }
 
-// 提交前校验。返回 { ok, error }，error 直接拿去 alert。
+// 提交前校验。返回 { ok, errorKey }，调用方用 t(errorKey) 取文案。
+// 2026-11-12 前这里直接返回中文句子——但这个函数在 PURE LOGIC 段，
+// 它不该知道界面说什么语言。
 function validateExpenseInput(v) {
-  if (!v.date) return { ok:false, error:'请填写日期' };
-  if (!v.desc || !String(v.desc).trim()) return { ok:false, error:'请填写描述' };
+  if (!v.date) return { ok:false, errorKey:'errNoDate' };
+  if (!v.desc || !String(v.desc).trim()) return { ok:false, errorKey:'errNoDesc' };
   const amt = Number(v.origAmount);
-  if (!isFinite(amt) || amt <= 0) return { ok:false, error:'请填写有效金额' };
+  if (!isFinite(amt) || amt <= 0) return { ok:false, errorKey:'errBadAmount' };
   const c = String(v.ccy || 'AUD').toUpperCase();
   if (c !== 'AUD') {
     const r = Number(v.rate);
-    if (!isFinite(r) || r <= 0) return { ok:false, error:'没查到汇率，请手动填写汇率' };
+    if (!isFinite(r) || r <= 0) return { ok:false, errorKey:'errNoRate' };
   }
-  return { ok:true, error:'' };
+  return { ok:true, errorKey:'' };
 }
 
 // 15 秒轮询用它判断要不要重渲染。两边（数据库行 / toDB 的输出）都走这一个函数。
@@ -1430,7 +1432,7 @@ async function submitExpense() {
   const rate  = ccy === 'AUD' ? 1 : curRate();
 
   const v = validateExpenseInput({ date, desc, origAmount: inAmt, ccy, rate });
-  if (!v.ok) { alert(v.error); return; }
+  if (!v.ok) { alert(t(v.errorKey)); return; }
 
   // amount 永远是 AUD。origCcy 为 null 表示这笔本来就是 AUD 记的。
   const amount     = ccy === 'AUD' ? inAmt : convertToAud(inAmt, rate);

@@ -105,7 +105,13 @@ assert.strictEqual(V({ origAmount:NaN }).ok,false, '金额 NaN 应拦下');
 assert.strictEqual(V({ rate:NaN }).ok, false, '外币但汇率为 NaN 必须拦下');
 assert.strictEqual(V({ rate:'' }).ok,  false, '外币但汇率为空必须拦下');
 assert.strictEqual(V({ rate:0 }).ok,   false, '外币但汇率为 0 必须拦下');
-assert.ok(V({ rate:NaN }).error.includes('汇率'), '错误提示要指出是汇率的问题');
+// 2026-11-12 起 validateExpenseInput 返回的是词条 key 而不是中文句子——
+// 它在 PURE LOGIC 段里，不该知道界面说什么语言。文案由调用方 t(key) 取。
+assert.strictEqual(V({ rate:NaN }).errorKey, 'errNoRate', '外币缺汇率要给出 errNoRate');
+assert.strictEqual(V({ date:'' }).errorKey, 'errNoDate', '缺日期给 errNoDate');
+assert.strictEqual(V({ desc:'' }).errorKey, 'errNoDesc', '缺描述给 errNoDesc');
+assert.strictEqual(V({ origAmount:0 }).errorKey, 'errBadAmount', '金额非法给 errBadAmount');
+assert.strictEqual(V({}).errorKey, '', '通过时 errorKey 为空串');
 
 // AUD 不该被汇率卡住——它根本不用汇率
 assert.strictEqual(V({ ccy:'AUD', rate:NaN }).ok, true, 'AUD 不看汇率');
