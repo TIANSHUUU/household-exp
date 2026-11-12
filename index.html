@@ -813,6 +813,48 @@ function calcTotals(rows, carryover) {
 
 // ── PURE LOGIC END ──
 
+// ── i18n ──
+// 照搬 assets/recipe.js 里那套（跑了三个月）。两页共用一个 key：
+// 在账单页切语言，食谱页跟着变。
+//
+// 为什么不抽成 assets/i18n.js：引擎只有 6 行，而两页的词条表完全不同
+// （账单 75 条、食谱 87 条，交集几乎为零），真正能共用的就这几行；
+// 抽出去反而要背 ?v= 的维护负担。理由同 HANDOFF 第十一节对其他共用
+// 小函数的判断。
+//
+// ⚠️ I18N 是 const，跨不出 eval 作用域，所以它**不属于 PURE LOGIC 段**。
+// 它的检查走 scripts/verify-i18n.js（大括号配对 + eval）。
+const LANG_KEY = 'hh_lang';
+// 回退读 recipe_lang：食谱页原来用的就是那个 key，不回退的话用户现有的
+// 语言偏好会在这次上线时被悄悄重置成中文。
+let lang = (localStorage.getItem(LANG_KEY) || localStorage.getItem('recipe_lang')) === 'en' ? 'en' : 'zh';
+
+const I18N = {
+  zh: {
+    langBtn: 'EN',
+  },
+  en: {
+    langBtn: '中文',
+  },
+};
+
+// 取词条。{0} {1} 占位符按参数顺序替换。找不到的 key 回退中文，
+// 再找不到就返回 key 本身——宁可界面上露出一个英文 key，也不要 undefined。
+function t(k) {
+  const s = I18N[lang][k] != null ? I18N[lang][k] : (I18N.zh[k] != null ? I18N.zh[k] : k);
+  const args = Array.prototype.slice.call(arguments, 1);
+  return args.length ? String(s).replace(/\{(\d)\}/g, (m, i) => args[i] != null ? args[i] : m) : s;
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem(LANG_KEY, l);
+  document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
+  paintChrome();
+  render();
+}
+function toggleLang() { setLang(lang === 'en' ? 'zh' : 'en'); }
+
 // ── FX rates ──
 // ⚠️ 这是第三方 API，不是 Supabase。**绝对不要给它带 await H()**——
 // 那会把登录令牌泄露给 frankfurter.dev。整个仓库只有这一处 fetch 不带 H()。
