@@ -878,9 +878,103 @@ let lang = (localStorage.getItem(LANG_KEY) || localStorage.getItem('recipe_lang'
 const I18N = {
   zh: {
     langBtn: 'EN',
+    // 顶栏
+    appTitle: '家庭账单', navDrawer: '☰ 往期', navShopping: '🛒 购物',
+    navActivity: '📅 日程', navRecipe: '🍳 食谱', navSettings: '设置',
+    // 汇总卡
+    cycleLabel: '累计账单 · 共 {0} 笔',
+    heroRecv: '本月宝宝需还给你', heroPay: '本月应转给宝宝',
+    heroNote: 'AUD · 每月 {0} 日自动记租金',
+    bCarryRecv: '上期宝宝欠你（抵减）', bCarryPay: '上期你欠宝宝（累加）',
+    bSharedTotal: '共同开支（全额）', bSharedHalf: '└ 其中抵扣（÷2）',
+    bPartnerPaid: '替宝宝垫付（全额抵扣）', bCovered: '宝宝替我垫付',
+    // 开支行
+    typeShared: '共同分担', typePartnerPersonal: '替宝宝垫付', typePartnerPaid: '宝宝替我垫',
+    shareEach: '各付 ${0}', shareFullCredit: '全额抵扣', shareFullCharge: '全额增加',
+    btnEdit: '编辑', btnDelete: '删除',
+    emptyList: '暂无记录<br>点击上方按钮添加开支',
+    addFab: '添加开支',
+    // 添加 / 编辑面板
+    addTitle: '添加开支', editTitle: '编辑开支',
+    fDate: '日期', fAmount: '金额', fDesc: '描述', fType: '类型',
+    segSharedSub: '各付一半', segPartnerSub: '全额抵扣', segCoveredSub: '全额增加',
+    btnAdd: '添加', btnSaveEdit: '保存修改', fxRefreshTitle: '重新获取汇率',
+    // 设置面板
+    setTitle: '设置', setRent: '每月租金',
+    setRentSub: '每月自动记一笔「宝宝替我垫付」',
+    setRentDay: '租金日', setRentDaySub: '每月几号自动记租金',
+    btnSave: '保存', rentSectionTitle: '关于房租',
+    rentHint: '每月 {0} 日自动记一笔「宝宝替我垫付」。改上面的金额只影响以后生成的，已经记上的保留当时金额。房租行可以改金额但不能删——删了下次打开会自动补回来，真要去掉就把金额改成 0。',
+    // 往期抽屉 / 历史详情
+    drawerTitle: '往期记录', loading: '加载中...',
+    cycEmpty: '暂无往期账单<br>2026-11-02 起不再归档<br>这里只保留此前的历史记录',
+    loadFailed: '加载失败，请重试',
+    cycRecv: '宝宝还 ', cycPay: '应转 ', cycToNow: '至今',
+    histTitle: '账期详情', histEmpty: '本期无开支记录', histSettled: 'AUD · 已结算',
+    histRecv: '宝宝需还给你', histPay: '当期应转给宝宝', histRent: '我的租金份额',
+    // 弹窗 / 提示
+    confirmDelTitle: '确认删除？', btnCancel: '取消', btnUndo: '撤销操作',
+    undoDeleted: '已删除「{0}」',
+    errNoDate: '请填写日期', errNoDesc: '请填写描述', errBadAmount: '请填写有效金额',
+    errNoRate: '没查到汇率，请手动填写汇率',
+    errConvert: '金额换算失败，请检查金额和汇率',
+    errBadSettings: '请填写有效的设置值',
+    errNoCycle: '账期尚未加载，请刷新页面重试',
+    errSaveFailed: '保存失败，请检查网络后重试',
+    fxLoading: '正在获取汇率…',
+    fxNote: '取的是 {0} 的收盘价（当天还没有牌价）',
+    fxNoRate: '没查到 {0} 的汇率，请手动填写',
   },
   en: {
     langBtn: '中文',
+    // 顶栏
+    appTitle: 'Household Expenses', navDrawer: '☰ History', navShopping: '🛒 Shopping',
+    navActivity: '📅 Schedule', navRecipe: '🍳 Recipes', navSettings: 'Settings',
+    // 汇总卡
+    cycleLabel: 'Running total · {0} entries',
+    // 英文版 hero 不用方向标签，统一是 Balance (Tianshu)，方向靠正负号
+    heroRecv: 'Balance (Tianshu)', heroPay: 'Balance (Tianshu)',
+    heroNote: 'AUD · rent auto-logged on day {0}',
+    bCarryRecv: 'Previous balance', bCarryPay: 'Previous balance',
+    bSharedTotal: 'Shared expenses (total)', bSharedHalf: "└ XC's half (÷2)",
+    bPartnerPaid: 'TS pays for XC', bCovered: 'XC pays for TS',
+    // 开支行
+    typeShared: 'Shared', typePartnerPersonal: 'TS pays for XC', typePartnerPaid: 'XC pays for TS',
+    shareEach: '${0} each', shareFullCredit: 'Full credit', shareFullCharge: 'Full charge',
+    btnEdit: 'Edit', btnDelete: 'Delete',
+    emptyList: 'No entries yet<br>Tap the button above to add one',
+    addFab: 'Add expense',
+    // 添加 / 编辑面板
+    addTitle: 'Add expense', editTitle: 'Edit expense',
+    fDate: 'Date', fAmount: 'Amount', fDesc: 'Description', fType: 'Type',
+    segSharedSub: 'Split 50/50', segPartnerSub: 'Full credit', segCoveredSub: 'Full charge',
+    btnAdd: 'Add', btnSaveEdit: 'Save changes', fxRefreshTitle: 'Refresh rate',
+    // 设置面板
+    setTitle: 'Settings', setRent: 'Monthly rent',
+    setRentSub: 'Logged automatically as "XC pays for TS"',
+    setRentDay: 'Rent day', setRentDaySub: 'Day of month to log rent',
+    btnSave: 'Save', rentSectionTitle: 'About rent',
+    rentHint: 'Rent is logged automatically on day {0} as "XC pays for TS". Changing the amount above only affects future entries — ones already logged keep their original amount. Rent rows can be edited but not deleted: deleting one just brings it back on the next load. To cancel a month, set its amount to 0.',
+    // 往期抽屉 / 历史详情
+    drawerTitle: 'Past cycles', loading: 'Loading...',
+    cycEmpty: 'No past cycles<br>Archiving stopped on 2026-11-02<br>Only earlier history is kept here',
+    loadFailed: 'Could not load — please retry',
+    cycRecv: 'to TS ', cycPay: 'to XC ', cycToNow: 'now',
+    histTitle: 'Cycle detail', histEmpty: 'No expenses in this cycle', histSettled: 'AUD · settled',
+    histRecv: 'Balance (Tianshu)', histPay: 'Balance (Tianshu)', histRent: "TS's rent share",
+    // 弹窗 / 提示
+    confirmDelTitle: 'Delete this?', btnCancel: 'Cancel', btnUndo: 'Undo',
+    undoDeleted: 'Deleted "{0}"',
+    errNoDate: 'Please pick a date', errNoDesc: 'Please enter a description',
+    errBadAmount: 'Please enter a valid amount',
+    errNoRate: 'No rate found — please enter one manually',
+    errConvert: 'Conversion failed — check the amount and rate',
+    errBadSettings: 'Please enter valid settings',
+    errNoCycle: 'Cycle not loaded yet — refresh and try again',
+    errSaveFailed: 'Save failed — check your connection and retry',
+    fxLoading: 'Fetching rate…',
+    fxNote: 'Using the close from {0} (no rate published for that day yet)',
+    fxNoRate: 'No rate found for {0} — please enter one manually',
   },
 };
 
