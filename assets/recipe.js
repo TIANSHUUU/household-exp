@@ -122,8 +122,11 @@ function setSync(state) { $('sync-dot').className = 'sync-dot ' + state; }
 
 // ── 界面语言 ──
 // 用 localStorage 而不是 sessionStorage：语言偏好该跨会话保持，登录态不该。
-const LANG_KEY = 'recipe_lang';
-let lang = localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'zh';
+// 2026-11-12 起和账单页共用一个 key，在哪边切都算。
+// 回退读旧的 recipe_lang：不回退的话，这次上线会把用户已有的语言偏好
+// 悄悄重置成中文。
+const LANG_KEY = 'hh_lang';
+let lang = (localStorage.getItem(LANG_KEY) || localStorage.getItem('recipe_lang')) === 'en' ? 'en' : 'zh';
 
 const I18N = {
   zh: {
