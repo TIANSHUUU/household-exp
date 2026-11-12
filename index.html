@@ -42,7 +42,25 @@
       font-family: inherit; cursor: pointer; transition: background 0.15s, color 0.15s;
     }
     .lang-btn:active { background: var(--card); color: var(--text); }
-    @media (max-width: 520px) { .lang-btn { padding: 3px 7px; font-size: 10px; } }
+
+    /* 拆成两段后 emoji 和文字之间的空格没了，用 margin 补回来。
+       放在 .nav-text 上而不是 .nav-icon 上：窄屏隐藏文字时不会留下尾部空隙。 */
+    .nav-text { margin-left: 4px; }
+
+    @media (max-width: 520px) {
+      .lang-btn { padding: 3px 7px; font-size: 10px; }
+      /* 窄屏只留 emoji。做法和 assets/recipe.css 里的一致（那边 2026-08
+         就为英文踩过），但这里**中英都生效**，理由是实测出来的：
+           · 375px 下 .topbar-inner 只有 335px
+           · 中文导航 228px + 新加的语言按钮 32px = 260px，h1 只剩 72px
+             而「家庭账单」要 84px —— 缺 12px，标题会被截成「家庭账…」
+           · 缩字号（18→16px 省 9px）和压缩按钮（省 6px）都不够，
+             而且把按钮做到 9px 字号就太小点不中了
+         emoji（☰🛒📅🍳）本身表意清楚，隐藏文字是这里最干净的办法。
+         宽屏不受影响，中英文都照常显示完整标签。 */
+      .nav-text { display: none; }
+      .nav-icon { font-size: 15px; }
+    }
 
     /* ── App ── */
     #app { padding-bottom: 100px; }
@@ -525,7 +543,7 @@
 
 <!-- Undo Toast -->
 <div class="undo-toast" id="undo-toast">
-  <span class="undo-text" id="undo-text">已删除</span>
+  <span class="undo-text" id="undo-text"></span>
   <button class="undo-btn" id="btn-undo" onclick="undoDel()">撤销操作</button>
 </div>
 
@@ -893,7 +911,8 @@ const I18N = {
   zh: {
     langBtn: 'EN',
     // 顶栏
-    appTitle: '家庭账单', navDrawer: '☰ 往期', navShopping: '🛒 购物',
+    appTitle: '家庭账单', appTitleShort: '家庭账单',
+    navDrawer: '☰ 往期', navShopping: '🛒 购物',
     navActivity: '📅 日程', navRecipe: '🍳 食谱', navSettings: '设置',
     // 汇总卡
     cycleLabel: '累计账单 · 共 {0} 笔',
@@ -942,8 +961,16 @@ const I18N = {
   en: {
     langBtn: '中文',
     // 顶栏
-    appTitle: 'Household Expenses', navDrawer: '☰ History', navShopping: '🛒 Shopping',
-    navActivity: '📅 Schedule', navRecipe: '🍳 Recipes', navSettings: 'Settings',
+    // 顶栏 h1 的宽度是按中文四个字留的，'Household Expenses' 会被截成
+    // 「House…」。浏览器标签页标题用长的，顶栏用短的。
+    appTitle: 'Household Expenses', appTitleShort: 'Expenses',
+    // 顶栏总宽被 .topbar-inner 的 max-width:600px 卡死，而 .topbar-actions
+    // 是 flex-shrink:0 —— 英文标签变宽时挤压全部由 h1 承担。实测完整英文
+    // （History/Shopping/Schedule/Recipes/Settings）合计 523px，只给 h1 剩
+    // 77px，'Expenses' 要 93px，于是被截成「Expens…」。
+    // 缩短最长的三个，emoji 本来就表达了含义。
+    navDrawer: '☰ History', navShopping: '🛒 Shop',
+    navActivity: '📅 Plan', navRecipe: '🍳 Food', navSettings: 'Settings',
     // 汇总卡
     cycleLabel: 'Running total · {0} entries',
     // 英文版 hero 不用方向标签，统一是 Balance (Tianshu)，方向靠正负号
@@ -975,7 +1002,11 @@ const I18N = {
     loadFailed: 'Could not load — please retry',
     cycRecv: 'to TS ', cycPay: 'to XC ', cycToNow: 'now',
     histTitle: 'Cycle detail', histEmpty: 'No expenses in this cycle', histSettled: 'AUD · settled',
-    histRecv: 'Balance (Tianshu)', histPay: 'Balance (Tianshu)', histRent: "TS's rent share",
+    // ⚠️ 历史账期**不能**用 Balance (Tianshu)。那个标签暗示「正数 = 债权方」
+    // 的符号约定，而历史账期的数值一律不动（cyc.transfer 是冻结值，明细还要
+    // 靠 rentUsed 反推出来，见 HANDOFF 第十三节），符号仍是中文那一套。
+    // 标签和数字各说各话会直接把债权债务读反。用和抽屉一致的方向性写法。
+    histRecv: 'Settled · to TS', histPay: 'Settled · to XC', histRent: "TS's rent share",
     // 弹窗 / 提示
     confirmDelTitle: 'Delete this?', btnCancel: 'Cancel', btnUndo: 'Undo',
     undoDeleted: 'Deleted "{0}"',
@@ -1017,11 +1048,21 @@ function paintChrome() {
 
   document.title = t('appTitle');
   const h1 = document.querySelector('.topbar h1');
-  if (h1) h1.childNodes[0].nodeValue = t('appTitle');   // 后面还跟着同步小圆点，只能换第一个文本节点
+  if (h1) h1.childNodes[0].nodeValue = t('appTitleShort');   // 后面还跟着同步小圆点，只能换第一个文本节点
 
-  set('nav-drawer', t('navDrawer'));     set('nav-shopping', t('navShopping'));
-  set('nav-activity', t('navActivity')); set('nav-recipe', t('navRecipe'));
-  set('nav-settings', t('navSettings')); set('lang-btn', t('langBtn'));
+  // 四个带 emoji 的跳转项拆成 emoji + 文字两段，好让窄屏 CSS 只留 emoji。
+  // 「设置」没有 emoji，不用拆。
+  const setNav = (id, txt) => {
+    const e = document.getElementById(id); if (!e) return;
+    const i = txt.indexOf(' ');
+    e.innerHTML = i > 0
+      ? `<span class="nav-icon">${escHtml(txt.slice(0, i))}</span>` +
+        `<span class="nav-text">${escHtml(txt.slice(i + 1))}</span>`
+      : escHtml(txt);
+  };
+  setNav('nav-drawer', t('navDrawer'));     setNav('nav-shopping', t('navShopping'));
+  setNav('nav-activity', t('navActivity')); setNav('nav-recipe', t('navRecipe'));
+  set('nav-settings', t('navSettings'));    set('lang-btn', t('langBtn'));
 
   set('b-shared-total-lbl', t('bSharedTotal'));
   set('b-shared-half-lbl',  t('bSharedHalf'));
@@ -1045,6 +1086,12 @@ function paintChrome() {
   set('rent-hint', t('rentHint', cfg.rentDay));
 
   set('drawer-title', t('drawerTitle'));
+  // 下面这三个在 openHistory / openAdd 里也会各自被设一次，但那是显示前
+  // 的事。这里一并刷，免得英文界面的隐藏元素里留着中文占位文字——用户
+  // 看不到，但「整页还有没有中文残留」的验收会一直被它们噪音干扰。
+  set('hist-title', t('histTitle'));
+  set('add-sheet-title', t('addTitle'));
+  set('add-submit-btn', t('btnAdd'));
   set('confirm-title', t('confirmDelTitle'));
   set('btn-cancel-del', t('btnCancel'));
   set('btn-confirm-del', t('btnDelete'));

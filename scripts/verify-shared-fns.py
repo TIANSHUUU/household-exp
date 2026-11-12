@@ -36,7 +36,12 @@ WATCH = {
     'setSyncDot':   '右上角同步状态小圆点，三个页面共用同一套 CSS class',
     'overlayClick': '点浮层空白处关闭，交互手感必须一致',
     'closeAdd':     '关闭添加面板并复位编辑状态',
-    'fmtDate':      '日期显示格式，各页面不一致会很突兀',
+    # 'fmtDate' —— 2026-11-12 摘掉。账单页做中英切换后它变成
+    #   `fmtDateIn(ds, lang)` 的薄封装（真正的逻辑搬进了 PURE LOGIC 段，
+    #   那边有 11 条断言盯着），而 activity.html 仍是中文单语的原实现。
+    #   shopping.html 压根没有这个函数，所以摘掉 index 之后只剩一个页面，
+    #   无从比对——留着就是个永远「通过」的空检查，比没有更误导。
+    #   等哪天 activity/shopping 也做了 i18n、三页又该一致了，再加回来。
 }
 
 

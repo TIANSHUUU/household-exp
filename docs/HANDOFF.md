@@ -815,3 +815,73 @@ assert.strictEqual(calcTotals([], 0).transfer, 0,
 ```
 
 ⚠️ `renderArchived()` 里那份内联计算**保留了旧公式**。历史三期当时确实按含租金的公式结算且钱已转过，`cyc.transfer` 是冻结值，改了明细就和结算额对不上。
+
+---
+
+## 十四、中英切换是怎么做的（2026-11-12 起）
+
+### 一句话
+
+账单页和食谱页各有一份 `I18N` 词条表和一份 6 行引擎（`t()` / `setLang()` / `toggleLang()` / `paintChrome()`），共用 `localStorage['hh_lang']`。**购物页和日程页仍然只有中文。**
+
+### 为什么不抽成 `assets/i18n.js`
+
+引擎只有 6 行，而两页的词条表完全不同（账单 76 条、食谱 87 条，交集几乎为零），真正能共用的就那几行。抽出去反而要背 `?v=` 的维护负担。判断依据同第十一节对其他共用小函数的那套理由。
+
+`recipe.js` 读 `hh_lang`，读不到时**回退读旧的 `recipe_lang`**——不回退的话，这次上线会把用户已有的语言偏好悄悄重置成中文。
+
+### ⚠️ 一个已知盲区
+
+`scripts/verify-shared-fns.py` 的 `PAGES` 只扫三个页面的内联 `<script>`，**看不到 `assets/recipe.js`**。所以那两份 `t()` 引擎如果分化了，没有任何检查能发现。
+
+`scripts/verify-i18n.js` 至少把两张词条表的 zh/en key 对齐盯住了。它用**大括号配对 + eval**而不是正则：词条表一行写多个 key，按行匹配的正则每行只抓第一个，会漏掉大半还报「对齐」——写这个脚本时先用正则试过，对 `recipe.js` 数出来的结果是错的，是实测踩出来的。
+
+### 英文版汇总卡的符号是反的，这是对的
+
+中文版从「要转多少钱」的角度算，方向写在标签里（「本月宝宝需还给你」），金额取绝对值。
+
+英文版换成中性的 balance 模型（用户说 `owes` 有亏欠感），方向只靠正负号，约定 **正数 = Tianshu 是债权方**，所以 `Balance (Tianshu) = -transfer`。
+
+**整张卡一起翻，不只是 hero。** 只翻 hero 的话明细加起来对不上 hero——spec 初稿就栽在这。展开（数字取自 2026-11-12 线上）：
+
+```
+中文  carry -6984.63 - shared/2 2579.37 - pp 487.58 + cp 4134.96 = -5916.62 = transfer
+英文  -carry 6984.63 + shared/2 2579.37 + pp 487.58 - cp 4134.96 = +5916.62 = Balance
+```
+
+逻辑在 PURE LOGIC 段的 `balanceView()` 里，有断言钉死，其中一条专门验「明细四项之和严格等于 hero」。
+
+**颜色不用翻。** class 的语义是「对 TS 有利 = 绿」，中文的 `-$2,579.37` 和英文的 `+$2,579.37` 表达的是同一件事。
+
+### 历史账期不能用 `Balance (Tianshu)` 这个标签
+
+`renderArchived()` / `historySummaryHtml()` 只换标签文字，**数值一律不动**（`cyc.transfer` 是冻结值，明细还要靠 `rentUsed` 反推，见第十三节），符号仍是中文那一套。
+
+所以历史详情的 hero 用的是 `Settled · to TS` / `Settled · to XC`——**方向写在标签里**，和抽屉里的 `to TS $6,984.63` 一致。2026-11-12 实测时这里一度写成 `Balance (Tianshu)`，标签暗示「正数=债权方」而下面的明细是中文符号，两者各说各话，会直接把债权债务读反。
+
+### 顶栏宽度是个真约束，不是小事
+
+`.topbar-inner` 的 `max-width` 是 600px，而 `.topbar-actions` 是 `flex-shrink: 0`——**英文标签变宽时，挤压全部由 h1 承担**。2026-11-12 实测：
+
+| | 导航总宽 | 留给 h1 | h1 需要 | 结果 |
+|---|---|---|---|---|
+| 完整英文（History/Shopping/Schedule/Recipes/Settings） | 523px | 77px | 93px | 截成「Expens…」 |
+| 缩短后（History/Shop/Plan/Food/Settings） | 442px | 158px | 93px | 正常 |
+
+所以英文导航用的是 `🛒 Shop` / `📅 Plan` / `🍳 Food` 而不是完整单词，emoji 本来就表达了含义。浏览器标签页标题仍用完整的 `Household Expenses`（`appTitle`），顶栏 h1 用短的 `Expenses`（`appTitleShort`）。
+
+**375px 窄屏另有一道坎：** 加了语言按钮之后，中文导航 228px + 按钮 32px = 260px，h1 只剩 72px 而「家庭账单」要 84px，缺 12px。缩字号（18→16px 省 9px）和压缩按钮（省 6px）都不够，所以 520px 以下**中英都只留 emoji**（`.nav-text { display: none }`）。`assets/recipe.css` 里有同一套做法，那边 2026-08 就为英文踩过一次，这里扩大到中文。
+
+### 加新文案时
+
+1. `I18N.zh` 和 `I18N.en` **同时**加，跑 `node scripts/verify-i18n.js` 确认对齐
+2. 静态 HTML 的文案要在 `paintChrome()` 里刷，否则切语言时不会变
+3. **局部变量不要叫 `t`** ——会遮蔽 `t()` 函数。`itemRowHtml` 和 `openDrawer` 里原来都有叫 `t` 的局部变量，2026-11-12 改名成 `meta` / `tr` 了
+4. `validateExpenseInput()` 在 PURE LOGIC 段里，它返回的是 **`errorKey`** 而不是中文句子——那个函数不该知道界面说什么语言
+
+### 这些中文是刻意保留的，别去翻
+
+- `fmtDateIn()` 的中文分支（它就是中文那一半）
+- 写进数据库的 `'房租'`（开支描述）和 `'首期账单'`（账期名）——**那是数据不是界面文字**，翻了会让同一张表里的数据随语言而异
+- `console.warn('房租补登跳过', ...)` ——开发者看的日志
+- 往期抽屉里的账期名（`7月账期` 等）同理，来自 `cycles.label`
