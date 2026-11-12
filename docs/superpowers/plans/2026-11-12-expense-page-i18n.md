@@ -394,7 +394,7 @@ git commit -m "账单页 i18n：日期格式化抽成纯函数并支持英文"
 const bv = balanceView({ carryover: -6984.63, shared: 1135.21, pp: 274.63, cp: 3609.96 });
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.001, `${msg}（实际 ${a}）`);
 
-near(bv.balance,  4216.91, 'Balance(Tianshu) 为正 = 你是债权方');
+near(bv.balance,  4216.905, 'Balance(Tianshu) 为正 = 你是债权方（4216.905 是真实值，4216.91 是 fmt 四舍五入后的显示值）');
 near(bv.carry,    6984.63, '上期结余取反');
 near(bv.halfShare,  567.605, '共同开支的一半取反为正');
 near(bv.pp,         274.63, 'TS pays for XC 取反为正');

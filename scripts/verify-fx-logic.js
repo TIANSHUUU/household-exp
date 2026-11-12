@@ -300,4 +300,37 @@ assert.strictEqual(fmtDateIn('2026-11-12', undefined), '11月12日 · 周四', '
 
 console.log('✅ date formatting OK');
 
+// ── 英文版的 balance 视角 ──
+// 中文版的方向写在标签里（「本月宝宝需还给你」vs「本月应转给宝宝」），
+// 金额永远是正数。英文版换成中性的 balance 模型，方向只靠正负号，
+// 约定是「正数 = Tianshu 是债权方」。
+//
+// 代码里 transfer 负数表示宝宝欠你，所以 Balance(Tianshu) = -transfer。
+// 这个翻转必须贯穿整张卡，不能只翻 hero —— spec 初稿就栽在这，
+// 只翻了 hero、明细照抄中文符号，结果明细加起来对不上 hero。
+const bv = balanceView({ carryover: -6984.63, shared: 1135.21, pp: 274.63, cp: 3609.96 });
+const nearBV = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.001, `${msg}（实际 ${a}）`);
+
+nearBV(bv.balance,    4216.905, 'Balance(Tianshu) 为正 = 你是债权方（4216.905 是真实值，4216.91 是 fmt 四舍五入后的显示值）');
+nearBV(bv.carry,      6984.63, '上期结余取反');
+nearBV(bv.halfShare,   567.605, '共同开支的一半取反为正');
+nearBV(bv.pp,          274.63, 'TS pays for XC 取反为正');
+nearBV(bv.cp,        -3609.96, 'XC pays for TS 取反为负');
+
+// 明细必须加得出 hero。只断言 hero 的符号挡不住「hero 翻了明细没翻」。
+nearBV(bv.carry + bv.halfShare + bv.pp + bv.cp, bv.balance,
+  '明细四项之和必须严格等于 Balance');
+
+// 反向：你欠宝宝 100 的情况
+nearBV(balanceView({ carryover: 100, shared: 0, pp: 0, cp: 0 }).balance, -100,
+  'transfer 为正（你要付钱）时 Balance 为负');
+
+nearBV(balanceView({ carryover: 0, shared: 0, pp: 0, cp: 0 }).balance, 0, '全零');
+
+// 脏数据：字符串和 null 都不能变成 NaN
+nearBV(balanceView({ carryover: '-6984.63', shared: '1135.21', pp: null, cp: undefined }).balance,
+  6984.63 + 567.605, '字符串照算，null/undefined 当 0');
+
+console.log('✅ balance view OK');
+
 console.log('\n全部通过 ✅');

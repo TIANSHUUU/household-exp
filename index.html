@@ -838,6 +838,25 @@ function fmtDateIn(ds, lng) {
   return `${mo[d.getMonth()]}${d.getDate()}日 · ${wk[d.getDay()]}`;
 }
 
+// 英文版汇总卡的数值视角。中文版不用它。
+//
+// 中文版从「要转多少钱」的角度算：transfer = carry - shared/2 - pp + cp，
+// 负数表示宝宝欠你，界面上用标签表达方向、金额取绝对值。
+//
+// 英文版从 Tianshu 的角度算，约定「正数 = Tianshu 是债权方」，所以每一项
+// 都是中文那项的相反数。**整张卡必须一起翻**，只翻 hero 的话明细加起来
+// 对不上 hero —— 在算钱的页面上这是硬伤。
+//
+//   -carry + shared/2 + pp - cp === -(carry - shared/2 - pp + cp) === -transfer
+function balanceView(v) {
+  const num = x => parseFloat(x) || 0;
+  const carry     = -num(v && v.carryover);
+  const halfShare =  num(v && v.shared) / 2;
+  const pp        =  num(v && v.pp);
+  const cp        = -num(v && v.cp);
+  return { carry, halfShare, pp, cp, balance: carry + halfShare + pp + cp };
+}
+
 // ── PURE LOGIC END ──
 
 // ── i18n ──
