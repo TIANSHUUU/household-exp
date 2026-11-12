@@ -262,4 +262,20 @@ near(withRent.transfer, -4216.905,
 
 console.log('✅ settlement formula OK');
 
+// ── 货币下拉框的显示文字 ──
+// 英文版只显示代码，不显示名字。两个理由：
+// 1. 下拉框很窄——上面那条 name.length <= 4 的断言就是为这个存在的，
+//    'Malaysian Ringgit' 这种英文全名根本塞不下
+// 2. 货币代码对英文读者本来就是通用词汇，比截断的全名更有用
+assert.strictEqual(currencyOptionLabel({ code:'AUD', name:'澳元' }, 'zh'), 'AUD 澳元', '中文显示代码+名字');
+assert.strictEqual(currencyOptionLabel({ code:'AUD', name:'澳元' }, 'en'), 'AUD', '英文只显示代码');
+assert.strictEqual(currencyOptionLabel({ code:'MYR', name:'林吉特' }, 'en'), 'MYR', '英文下长名字也只剩代码');
+assert.strictEqual(currencyOptionLabel({ code:'MYR', name:'林吉特' }, 'zh'), 'MYR 林吉特', '中文下保持原样');
+// 未知语言当中文处理——宁可多显示信息也别丢信息
+assert.strictEqual(currencyOptionLabel({ code:'JPY', name:'日元' }, undefined), 'JPY 日元', '语言未知回退中文');
+// 没有 name 的脏数据不能渲染出 'AUD undefined'
+assert.strictEqual(currencyOptionLabel({ code:'AUD' }, 'zh'), 'AUD', '缺 name 时只显示代码');
+
+console.log('✅ currency option label OK');
+
 console.log('\n全部通过 ✅');

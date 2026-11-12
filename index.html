@@ -811,6 +811,15 @@ function calcTotals(rows, carryover) {
   return { shared, pp, cp, carryover: carry, transfer: carry - shared / 2 - pp + cp };
 }
 
+// 货币下拉框一个选项的显示文字。
+// 英文只给代码：下拉框宽度就那么点（见上面 CURRENCIES 那段关于 97px 的
+// 计算），英文全名塞不下；而代码本身就是国际通用写法。
+function currencyOptionLabel(c, lng) {
+  if (!c || !c.code) return '';
+  if (lng === 'en' || !c.name) return c.code;
+  return c.code + ' ' + c.name;
+}
+
 // ── PURE LOGIC END ──
 
 // ── i18n ──
@@ -891,7 +900,7 @@ function lastCcy() {
 
 function fillCurrencySelect() {
   document.getElementById('f-ccy').innerHTML =
-    currencyList().map(c => `<option value="${c.code}">${c.code} ${c.name}</option>`).join('');
+    currencyList().map(c => `<option value="${c.code}">${currencyOptionLabel(c, lang)}</option>`).join('');
 }
 
 // 慢请求可能在新请求之后才返回，会把新结果覆盖掉。每次发请求递增 fxSeq，
