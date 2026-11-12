@@ -33,6 +33,17 @@
       min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
 
+    /* 和 assets/recipe.css 里的 .lang-btn 同源。index.html 不加载
+       recipe.css（它的 CSS 全部内联），所以只能复制一份。两边细节不必
+       完全一致——两个页面的配色本来就不同。 */
+    .lang-btn {
+      padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px;
+      background: transparent; color: var(--sub); font-size: 11px; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .lang-btn:active { background: var(--card); color: var(--text); }
+    @media (max-width: 520px) { .lang-btn { padding: 3px 7px; font-size: 10px; } }
+
     /* ── App ── */
     #app { padding-bottom: 100px; }
 
@@ -360,6 +371,7 @@
         <a class="icon-btn" id="nav-activity" href="activity.html" style="text-decoration:none;display:inline-block">📅 日程</a>
         <a class="icon-btn" id="nav-recipe" href="recipe.html" style="text-decoration:none;display:inline-block">🍳 食谱</a>
         <button class="icon-btn" id="nav-settings" onclick="openSettings()">设置</button>
+        <button class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
       </div>
     </div>
   </header>
@@ -1631,6 +1643,10 @@ function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', 
 
 // ── Boot ──
 // 2026-11-02 起没有登录门了，直接起 app。
+// paintChrome 必须在 initApp 之前：initApp 会触发 render()，
+// 而 render 依赖的静态标签得先就位。
+document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+paintChrome();
 initApp();
 </script>
 </body>
