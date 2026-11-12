@@ -885,3 +885,62 @@ assert.strictEqual(calcTotals([], 0).transfer, 0,
 - 写进数据库的 `'房租'`（开支描述）和 `'首期账单'`（账期名）——**那是数据不是界面文字**，翻了会让同一张表里的数据随语言而异
 - `console.warn('房租补登跳过', ...)` ——开发者看的日志
 - 往期抽屉里的账期名（`7月账期` 等）同理，来自 `cycles.label`
+
+---
+
+## 十五、页面之间到底共享什么（2026-11-12 盘过一遍）
+
+用户问：改食谱页会不会影响账单的数字。逐条查下来——**只有一个接触面，已经加了检查看住**。
+
+### 代码：账单页根本不加载食谱页的文件
+
+| 页面 | 加载的 `assets/` |
+|---|---|
+| `index.html` | `auth.js` |
+| `shopping.html` | `auth.js` |
+| `activity.html` | `auth.js` |
+| `recipe.html` | `auth.js` + `recipe.css` + `recipe.js` |
+
+**改 `recipe.js` 或 `recipe.css` 在代码路径上碰不到账单页。** 唯一共享的是 `assets/auth.js`，而它只有 26 行：一个 `KEY` 常量和一个返回请求头的 `H()`。
+
+### 数据：零重叠
+
+| | 读写的表 |
+|---|---|
+| `index.html` | `cycles`、`expenses` |
+| `recipe.js` | `recipes`、`ingredient_vocab`、`tag_i18n`、`shopping_items`、`shopping_lists` |
+
+`recipe.js` 里 `expenses` / `cycles` / `carryover` / `transfer` **一次都没出现**，反过来 `index.html` 也从不碰食谱的表。而且 `recipe.js` 所有 fetch 的表名都是写死的，没有动态拼接，不存在「拼错表名打到 expenses」的可能。
+
+### localStorage：只共享 `hh_lang`
+
+| 页面 | key |
+|---|---|
+| `index.html` | `hh_set_v2`、`hh_fx`、`hh_last_ccy`、`hh_lang` |
+| `recipe.js` | `hh_lang` |
+
+只有 `hh_lang` 是共享的，它只存 `'zh'` / `'en'`。两边的读法都是 `=== 'en' ? 'en' : 'zh'`，**写进去任何别的东西都会被当成中文**，不会炸也不会影响数字。
+
+注意 `hh_set_v2` 里的租金配置**不是权威值**——`loadExpenses()` 会用 `cfgFromCycle()` 从 `cycles.rent_amount` 覆盖掉（见第十三节）。
+
+### 账单的数字只依赖两样东西
+
+```js
+function calc() {
+  return calcTotals(expenses, activeCycle ? activeCycle.carryover : 0);
+}
+```
+
+`expenses` 来自 `dbGet(cycle_id)` 查 `expenses` 表，`carryover` 来自 `dbGetActiveCycle()` 查 `cycles` 表。`calcTotals()` 是 PURE LOGIC 段的纯函数，有 9 处断言盯着。**没有任何第三个输入。**
+
+### ⚠️ 唯一真实的传染路径：`auth.js` 的 `?v=` 不同步
+
+`assets/auth.js` 被四个页面共用。CLAUDE.md 的规矩是「改了 `assets/` 里任何文件，就把引用它的页面的 `?v=` 一起 bump」，但**实际的出错方式是只 bump 了自己正在调试的那个页面**。
+
+2026-11-12 盘查时这个雷已经埋好了：为食谱页改动时 bump 了 `recipe.html` 的三个 `?v=`（含 `auth.js`），另外三个页面还停在旧版本号。当时文件内容恰好一样所以没出事，但哪天真为食谱页改了 `auth.js`，账单页的浏览器就会命中缓存继续跑旧版——页面外壳正常、内容可能全空，和 2026-08-02 那次一模一样（第五节）。
+
+**已加 `scripts/verify-asset-versions.js`**：同一个 `assets/` 文件在各页面上的 `?v=` 必须一致，不一致就红。顺带也检查有没有漏写 `?v=` 的引用。
+
+### 结论
+
+除了 `auth.js` 这一个共享文件（现在有版本一致性检查兜着），食谱页和账单页在代码、数据、本地存储三个层面都是隔离的。**改食谱页不会动到账单的数字。**

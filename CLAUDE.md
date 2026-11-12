@@ -36,6 +36,8 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 
 **改了 `assets/` 里任何文件，就要把引用它的页面的 `?v=` 一起 bump。** 格式是 `年月日+两位序号`，同一天改多次就 `01`→`02`。
 
+⚠️ **「一起」是字面意思——四个页面都引了 `auth.js`。** 实际的出错方式不是忘记 bump，而是**只 bump 了自己正在调试的那个页面**，别的页面继续用缓存的旧文件。2026-11-12 就出现过这个状态（recipe.html 单独超前）。跑 `node scripts/verify-asset-versions.js` 能抓到。
+
 仓库没有构建步骤，只能手动维护。忘了 bump 的后果是手机浏览器继续用缓存的旧文件——2026-08-02 双语改造后就这样踩过一次：数据库列改名成 `name_zh` / `ingredients_zh` / `steps_zh`，手机上跑的旧 JS 还在读 `name` / `ingredients` / `steps`，页面外壳正常但内容全空。
 
 ## 其他
@@ -48,7 +50,7 @@ fetch(url, { method: 'POST', headers: { ...await H(), 'Prefer': 'return=represen
 - **页面打不开、登录失败、数据像是消失了——先 `dig +short @8.8.8.8 mpvsbeghuueffkjdemcr.supabase.co A`。** NXDOMAIN = 免费档项目被暂停了（7 天不活动就暂停），不是代码问题。2026-11-02 栽过一次，白查了很久。见 `docs/HANDOFF.md` 第十二节。
 - **仓库是公开的**，不要提交任何含个人信息的文件（包括真实邮箱地址）。
 
-## 改完跑这六个检查
+## 改完跑这七个检查
 
 ```bash
 node scripts/verify-recipe-logic.js    # recipe.js 的 PURE LOGIC 段断言
@@ -56,6 +58,7 @@ node scripts/verify-fx-logic.js        # index.html 的 PURE LOGIC 段断言（�
 python3 scripts/verify-refs.py         # 有没有「调用了但没定义」的函数（跨文件断裂）
 python3 scripts/verify-shared-fns.py   # 共用小函数在几个页面之间有没有悄悄分化
 node scripts/verify-i18n.js         # 中英词条表 key 有没有对齐（index.html + assets/recipe.js）
+node scripts/verify-asset-versions.js  # 同一个 assets/ 文件在各页面的 ?v= 是否一致
 node -e 'new Function(require("fs").readFileSync("assets/auth.js","utf8"));console.log("ok")'
 ```
 

@@ -398,7 +398,7 @@
     <div class="summary">
       <div class="summary-cycle" id="cycle-label">本期账单</div>
       <div class="transfer-hero pay" id="hero">
-        <div class="transfer-label" id="hero-label">本月应转给宝宝</div>
+        <div class="transfer-label" id="hero-label">应转给宝宝</div>
         <div class="transfer-big pay" id="hero-amount"><span class="sym" id="hero-sym">$</span><span id="hero-num">—</span></div>
         <div class="transfer-note" id="hero-note">AUD</div>
       </div>
@@ -550,7 +550,7 @@
 <button class="fab" onclick="openAdd()">+</button>
 
 <!-- 改了 assets/ 里的文件就把 ?v= bump 一次，否则手机浏览器会一直用缓存的旧版。见 docs/HANDOFF.md 第五节。 -->
-<script src="assets/auth.js?v=2026110201"></script>
+<script src="assets/auth.js?v=2026111201"></script>
 <script>
 // ── Supabase REST (no SDK) ──
 const API = 'https://mpvsbeghuueffkjdemcr.supabase.co/rest/v1';
@@ -916,7 +916,9 @@ const I18N = {
     navActivity: '📅 日程', navRecipe: '🍳 食谱', navSettings: '设置',
     // 汇总卡
     cycleLabel: '累计账单 · 共 {0} 笔',
-    heroRecv: '本月宝宝需还给你', heroPay: '本月应转给宝宝',
+    // 不带「本月」：2026-11-02 起没有按月结算了，这是一本持续累加的
+    // 应收账款（见第十三节）。说「本月」会让人以为这个数字只算当月。
+    heroRecv: '宝宝需还给你', heroPay: '应转给宝宝',
     heroNote: 'AUD · 每月 {0} 日自动记租金',
     bCarryRecv: '上期宝宝欠你（抵减）', bCarryPay: '上期你欠宝宝（累加）',
     bSharedTotal: '共同开支（全额）', bSharedHalf: '└ 其中抵扣（÷2）',
